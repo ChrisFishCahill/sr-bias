@@ -48,8 +48,8 @@ nta <- matrix(NA, nrow = n_year, ncol = length(ages))
 r <- eggs <- Ut <- rdev <- vulb <- ln_RS <- yield <- rep(NA, n_year)
 nta[1, ] <- Ro * Surv0
 eggs[1] <- sum(nta[1, ] * fa)
-vulb[1] <- sum(nta[1,]*vul*wa)
-yield[1] <- Ut[1]*sum(nta[1,]*vul*wa)
+vulb[1] <- sum(nta[1, ] * vul * wa)
+yield[1] <- Ut[1] * sum(nta[1, ] * vul * wa)
 
 # pick some deviates
 set.seed(1)
@@ -59,7 +59,7 @@ for (t in 2:n_year) rdev[t] <- rhor * rdev[t - 1] + sdc * rstd[t]
 relU <- seq(from = 0, to = 1, by = 0.05)
 Ut[1:length(relU)] <- relU
 Ut[which(is.na(Ut))] <- 1
-Ut = Ut*U
+Ut <- Ut * U
 
 # run the model
 for (t in 2:n_year) {
@@ -68,16 +68,37 @@ for (t in 2:n_year) {
     if (a == length(ages)) {
       nta[t, 1] <- reca * eggs[t - 1] * exp(-recb * eggs[t - 1] + rdev[t - 1])
       eggs[t] <- sum(nta[t, ] * fa)
-      vulb[t] <- sum(nta[t,]*vul*wa)
-      yield[t] <- Ut[t]*sum(nta[t,]*vul*wa)
+      vulb[t] <- sum(nta[t, ] * vul * wa)
+      yield[t] <- Ut[t] * sum(nta[t, ] * vul * wa)
     }
   }
 }
 
-S = nta[1:(n_year-1),1]
-ln_RS = eggs[1:(n_year-1)] / S
+S <- nta[1:(n_year - 1), 1]
+ln_RS <- eggs[1:(n_year - 1)] / S
 
-par(mfrow=c(1,2))
-plot(yield,type = "b")
+par(mfrow = c(1, 2))
+plot(yield, type = "b")
 plot(vulb, type = "b")
-plot(ln_RS~S)
+plot(ln_RS ~ S)
+
+#-----------------------
+library(TMB)
+
+cppfile <- "src/sr_bias_simple.cpp"
+compile(cppfile)
+dyn.load(dynlib("src/sr_bias_simple"))
+parameters <- list(
+  "log_a" = log(1), "log_sdwt" = log(1),
+  "log_sdm" = log(0.2),
+  "log_b" = 1, "wt" = rep(0, n_year-1)
+)
+random <- c("wt")
+
+data <- list("ln_RS" = ln_RS, "S" = S)
+obj <- MakeADFun(data = data, parameters = parameters, random = random)
+obj$fn(obj$par)
+obj$gr(obj$par)
+
+opt <- nlminb(start = obj$par, objective = obj$fn, gradient = obj$gr, control = list("trace" = 1))
+exp(unname(opt$par["log_a"]))
