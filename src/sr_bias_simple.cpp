@@ -33,6 +33,7 @@ Type objective_function<Type>::operator() ()
   Type sdm = exp(ln_sdm);
   REPORT(sdp);
   REPORT(sdm);
+  REPORT(rho); 
   
   return jnll;
 }
