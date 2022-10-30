@@ -3,8 +3,8 @@ template<class Type>
 Type objective_function<Type>::operator() ()
 {
   // Data
-  DATA_VECTOR(ln_RS);            // vector of R
-  DATA_VECTOR(S);            // vector of S
+  DATA_VECTOR(ln_RS);            
+  DATA_VECTOR(S);            
   Type n_t = ln_RS.size(); 
   
   // Parameters
@@ -19,7 +19,7 @@ Type objective_function<Type>::operator() ()
   // Objective function
   Type jnll = 0;
   
-  // Probability of random coefficients--wt a vector of latent states
+  // Probability of random coefficients--wt is a vector of latent states
   jnll -= dnorm(wt(0), wt0, exp(log_sdp), true);  
   for( int t=1; t<n_t; t++){
     jnll -= dnorm( wt(t), rho*wt(t-1), exp(log_sdp), true); 
