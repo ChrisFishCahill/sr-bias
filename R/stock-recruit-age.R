@@ -22,8 +22,9 @@ ages <- 1:15
 n_year <- 100
 Ro <- 1
 RecK <- 5 # Goodyear compensaiton ratio
-sdr <- 1.0 # standard deviation Rec
+sdwt <- 1.0 # standard deviation Rec
 rhor <- 0 # autocorrelation for Rec
+sdvt <- sqrt(0.1) # obs error in spawning stock size
 
 # set up leading vectors
 la <- Linf * (1 - exp(-vbk * ages))
@@ -47,7 +48,7 @@ EPRo <- sum(fa * Surv0)
 EPRf <- sum(fa * SurvF)
 reca <- RecK / EPRo
 recb <- -log(1 / RecK) / (Ro * EPRo)
-sdc <- sqrt(1 - rhor^2) * sdr
+sdc <- sqrt(1 - rhor^2) * sdwt
 Bo <- Ro * EPRo
 unfished <- fa * Surv0 / EPRo
 fished <- fa * SurvF / EPRf
@@ -55,7 +56,7 @@ LorenzenS <- ((exp(vbk * (ages + 1)) - 1) / (exp(vbk * ages) - 1))^(-Ma / vbk)
 
 # initialize recruits, eggs, nta matrix, etc
 nta <- matrix(NA, nrow = n_year, ncol = length(ages))
-eggs <- Ut <- rdev <- vulb <- ln_RS <- yield <- rep(NA, n_year)
+eggs <- Ut <- rdev <- vulb <- ln_RS <- yield <- C <- rep(NA, n_year)
 nta[1, ] <- Ro * Surv0
 eggs[1] <- sum(nta[1, ] * fa)
 vulb[1] <- sum(nta[1, ] * vul * wa)
@@ -73,6 +74,8 @@ run_model <- function() {
   Ut[1:length(relU)] <- relU
   Ut[which(is.na(Ut))] <- 1
   Ut <- Ut * U
+  C[1] <- Ut[1] * sum(nta[1, ] * vul)
+  yield[1] <- Ut[1] * sum(nta[1, ] * vul * wa)
 
   # run the simulation
   for (t in 2:n_year) {
@@ -83,20 +86,37 @@ run_model <- function() {
         eggs[t] <- sum(nta[t, ] * fa)
         vulb[t] <- sum(nta[t, ] * vul * wa)
         yield[t] <- Ut[t] * sum(nta[t, ] * vul * wa)
+        C[t] <- Ut[t] * sum(nta[t, ] * vul)
       }
     }
   }
-  S <- nta[1:(n_year - 1), 1] # S from 1:99
-  R <- nta[2:(n_year), 1] # R from 2:100
+  # true values
+  r <- nta[2:n_year, 1]         # r from 2:n_year; recby in carl's code
+  e <- eggs[1:(n_year-1)]       # eggs from 1:(n_year-1)
+  ln_rs = log(r/e)              # true relationship
+
+  # generate observed values
+  vt <- rnorm(length(e), sdvt)  # iid sampling errors
+  S <- e * exp(vt)              # Escapement w/ lognormal sampling error
+  R <- S + C[1:(n_year - 1)]    # assume catch measured perfectly
+
   out <- tibble(
-    S = S, R = R, ln_RS = log(R / S),
+    # "true" stuff
+    s = e, r = r, ln_rs = ln_rs,  
     yield = yield[1:(n_year - 1)],
     Ut = Ut[1:n_year - 1],
     vulb = vulb[1:(n_year - 1)], reca = rep(reca, n_year - 1),
     recb = rep(recb, n_year - 1), rdev = rdev[1:(n_year - 1)],
     Bo = rep(Bo, n_year - 1),
-    sdc = rep(sdc, (n_year - 1)), rhor = rep(rhor, (n_year - 1)),
-    year = 1:(n_year - 1)
+    sdc = rep(sdc, (n_year - 1)),  sdwt = rep(sdwt, (n_year - 1)), 
+    sdvt = rep(sdvt, (n_year - 1)),
+    rhor = rep(rhor, (n_year - 1)), 
+    vt = vt, wt = rdev,
+    year = 1:(n_year - 1), 
+    C = C[1:(n_year - 1)],
+    
+    # corrupted stuff
+    R = R, S = S, ln_RS = log(R/S)
   )
   out
 }
@@ -123,16 +143,16 @@ p2 <- dat %>% ggplot(aes(x = year, y = vulb)) +
   ) +
   theme(plot.title = element_text(hjust = 0.5))
 
-p3 <- dat %>% ggplot(aes(x = S, y = ln_RS)) +
+p3 <- dat %>% ggplot(aes(x = e, y = ln_rs)) +
   geom_point() +
-  ylab("ln(R/S)") +
-  ggtitle("ln(R/S) vs. S") +
+  ylab("ln(r/s)") +
+  ggtitle("ln(r/s) vs. s true") +
   theme_qfc() +
   theme(plot.title = element_text(hjust = 0.5))
 
-p4 <- dat %>% ggplot(aes(x = S, y = R)) +
+p4 <- dat %>% ggplot(aes(x = S, y = ln_RS)) +
   geom_point() +
-  ggtitle("R vs. S") +
+  ggtitle("ln(R/S) vs. S observed") +
   theme_qfc() +
   theme(plot.title = element_text(hjust = 0.5))
 
@@ -150,17 +170,18 @@ p6 <- dat %>% ggplot(aes(x = year, y = Ut)) +
   theme_qfc() +
   theme(plot.title = element_text(hjust = 0.5))
 
-p <- plot_grid(p1, p2, p4, p3, p5, p6, ncol = 2)
+p <- plot_grid(p1, p2, p3, p4, p5, p6, ncol = 2)
 p
 ggsave("plots/sim-demonstration.pdf", width = 8, height = 10)
 
-# demonstrate time-series bias with dead simple linear regression:
+# demonstrate bias with dead simple linear regression
+# note this is due to both errors in variables and time series bias
 nsim <- 10000
 a_ests <- b_ests <- rep(NA, nsim)
 set.seed(1)
 for (i in 1:nsim) {
   dat <- run_model()
-  fit <- lm(dat$ln_RS ~ dat$S)
+  fit <- lm(dat$ln_rs ~ dat$s) # ln(R/S) = ln(alpha) - beta*S
   a_est <- fit$coefficients[1]
   b_est <- -fit$coefficients[2]
   a_ests[i] <- a_est
