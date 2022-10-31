@@ -16,14 +16,14 @@ ahv <- 3
 sdv <- 0.7
 Sad <- 0.8
 Fmort <- 0.35
-U <- 0.316
+U <- 0.1
 Ma <- -log(Sad)
 ages <- 1:15
 n_year <- 100
 Ro <- 1
-RecK <- 5 # Goodyear compensaiton ratio
-sdwt <- 1.0 # standard deviation Rec
-rhor <- 0 # autocorrelation for Rec
+RecK <- 5         # Goodyear compensaiton ratio
+sdwt <- 0.25       # standard deviation Rec
+rhor <- 0         # autocorrelation for Rec
 sdvt <- sqrt(0.1) # obs error in spawning stock size
 
 # set up leading vectors
@@ -143,18 +143,18 @@ p2 <- dat %>% ggplot(aes(x = year, y = vulb)) +
   ) +
   theme(plot.title = element_text(hjust = 0.5))
 
-p3 <- dat %>% ggplot(aes(x = e, y = ln_rs)) +
+p3 <- dat %>% ggplot(aes(x = s, y = ln_rs)) +
   geom_point() +
   ylab("ln(r/s)") +
   ggtitle("ln(r/s) vs. s true") +
   theme_qfc() +
   theme(plot.title = element_text(hjust = 0.5))
 
-p4 <- dat %>% ggplot(aes(x = S, y = ln_RS)) +
-  geom_point() +
-  ggtitle("ln(R/S) vs. S observed") +
-  theme_qfc() +
-  theme(plot.title = element_text(hjust = 0.5))
+# p4 <- dat %>% ggplot(aes(x = S, y = ln_RS)) +
+#   geom_point() +
+#   ggtitle("ln(R/S) vs. S observed") +
+#   theme_qfc() +
+#   theme(plot.title = element_text(hjust = 0.5))
 
 p5 <- dat %>% ggplot(aes(x = year, y = rdev)) +
   geom_point() +
@@ -170,37 +170,31 @@ p6 <- dat %>% ggplot(aes(x = year, y = Ut)) +
   theme_qfc() +
   theme(plot.title = element_text(hjust = 0.5))
 
-p <- plot_grid(p1, p2, p3, p4, p5, p6, ncol = 2)
+p <- plot_grid(p1, p2, p3, p5, p6, ncol = 2)
 p
 ggsave("plots/sim-demonstration.pdf", width = 8, height = 10)
 
-# demonstrate bias with dead simple linear regression
+# demonstrate bias with simple linear regression
 
 nsim <- 10000
-ar_ests <- b_ests <- ar_ests2 <- br_ests2 <- rep(NA, nsim)
+ar_ests <- b_ests <- rep(NA, nsim)
 set.seed(1)
+U = 0.2
 for (i in 1:nsim) {
   dat <- run_model()
-  fit <- lm(dat$ln_rs ~ dat$s) # ln(R/S) = ln(alpha) + beta*S
+  dat = dat[(nrow(dat) - 30):nrow(dat),]
+  fit <- lm(dat$ln_rs ~ dat$s) 
   ar_est <- fit$coefficients[1]
   b_est <- - fit$coefficients[2] # convert to -beta
   ar_ests[i] <- ar_est
   b_ests[i] <- b_est
-  
-  # intercept only 
-  fit_int = lm(dat$ln_rs~1)
-  ar_est <- fit_int$coefficients[1]
-  ar_ests2[i] = ar_est
-  
-  # and slope only
-  fit_slope = lm(dat$ln_rs ~ -1 + dat$s) 
-  br_est <- -fit_slope$coefficients[1]
-  br_ests2[i] = br_est
 }
+median(exp(ar_ests) - reca)
+median(exp(b_ests) - recb)
 
 # plot it
-dat <- tibble(a_est = exp(ar_ests), b_est = b_ests, 
-              a_est2 = exp(ar_ests2), b_est2 = br_ests2)
+dat <- tibble(a_est = exp(ar_ests), b_est = b_ests)
+        
 a <- dat %>%
   ggplot(aes(x = a_est)) +
   geom_histogram(bins = 35) +
@@ -210,7 +204,6 @@ a <- dat %>%
     linetype = 2, size = 1
   ) +
   xlab("Estimates of alpha vs. truth") +
-  ggtitle("together") + 
   theme_qfc()
 
 b <- dat %>%
@@ -222,34 +215,9 @@ b <- dat %>%
     linetype = 2, size = 1
   ) +
   xlab("Estimates of beta vs. truth") +
-  ggtitle("together") + 
   theme_qfc()
 
-a2 <- dat %>%
-  ggplot(aes(x = a_est2)) +
-  geom_histogram(bins = 35) +
-  geom_vline(
-    xintercept = reca,
-    color = "steelblue",
-    linetype = 2, size = 1
-  ) +
-  xlab("Estimates of alpha vs. truth") +
-  ggtitle("separate") + 
-  theme_qfc()
-
-b2 <- dat %>%
-  ggplot(aes(x = b_est2)) +
-  geom_histogram(bins = 35) +
-  geom_vline(
-    xintercept = recb,
-    color = "steelblue",
-    linetype = 2, size = 1
-  ) +
-  xlab("Estimates of beta vs. truth") +
-  ggtitle("separate") + 
-  theme_qfc()
-
-p <- plot_grid(a, b, a2, b2, ncol = 2)
+p <- plot_grid(a, b, ncol = 2)
 p
 
 ggsave("plots/reg-test.pdf", width = 7, height = 4)
