@@ -181,7 +181,7 @@ ar_ests <- b_ests <- rep(NA, nsim)
 set.seed(1)
 for (i in 1:nsim) {
   dat <- run_model()
-  fit <- lm(dat$ln_RS ~ Xt) # ln(R/S) = ln(alpha) + beta*S
+  fit <- lm(dat$ln_rs ~ dat$s) # ln(R/S) = ln(alpha) + beta*S
   ar_est <- fit$coefficients[1]
   b_est <- - fit$coefficients[2] # convert to -beta
   a_ests[i] <- a_est
