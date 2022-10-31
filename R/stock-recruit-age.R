@@ -175,9 +175,9 @@ p
 ggsave("plots/sim-demonstration.pdf", width = 8, height = 10)
 
 # demonstrate bias with dead simple linear regression
-# note this is due to both errors in variables and time series bias
+
 nsim <- 10000
-ar_ests <- b_ests <- rep(NA, nsim)
+ar_ests <- b_ests <- ar_ests2 <- br_ests2 <- rep(NA, nsim)
 set.seed(1)
 for (i in 1:nsim) {
   dat <- run_model()
@@ -186,10 +186,21 @@ for (i in 1:nsim) {
   b_est <- - fit$coefficients[2] # convert to -beta
   ar_ests[i] <- ar_est
   b_ests[i] <- b_est
+  
+  # intercept only 
+  fit_int = lm(dat$ln_rs~1)
+  ar_est <- fit_int$coefficients[1]
+  ar_ests2[i] = ar_est
+  
+  # and slope only
+  fit_slope = lm(dat$ln_rs ~ -1 + dat$s) 
+  br_est <- -fit_slope$coefficients[1]
+  br_ests2[i] = br_est
 }
 
 # plot it
-dat <- tibble(a_est = exp(ar_ests), b_est = b_ests)
+dat <- tibble(a_est = exp(ar_ests), b_est = b_ests, 
+              a_est2 = exp(ar_ests2), b_est2 = br_ests2)
 a <- dat %>%
   ggplot(aes(x = a_est)) +
   geom_histogram(bins = 35) +
@@ -199,6 +210,7 @@ a <- dat %>%
     linetype = 2, size = 1
   ) +
   xlab("Estimates of alpha vs. truth") +
+  ggtitle("together") + 
   theme_qfc()
 
 b <- dat %>%
@@ -210,9 +222,34 @@ b <- dat %>%
     linetype = 2, size = 1
   ) +
   xlab("Estimates of beta vs. truth") +
+  ggtitle("together") + 
   theme_qfc()
 
-p <- plot_grid(a, b, ncol = 2)
+a2 <- dat %>%
+  ggplot(aes(x = a_est2)) +
+  geom_histogram(bins = 35) +
+  geom_vline(
+    xintercept = reca,
+    color = "steelblue",
+    linetype = 2, size = 1
+  ) +
+  xlab("Estimates of alpha vs. truth") +
+  ggtitle("separate") + 
+  theme_qfc()
+
+b2 <- dat %>%
+  ggplot(aes(x = b_est2)) +
+  geom_histogram(bins = 35) +
+  geom_vline(
+    xintercept = recb,
+    color = "steelblue",
+    linetype = 2, size = 1
+  ) +
+  xlab("Estimates of beta vs. truth") +
+  ggtitle("separate") + 
+  theme_qfc()
+
+p <- plot_grid(a, b, a2, b2, ncol = 2)
 p
 
 ggsave("plots/reg-test.pdf", width = 7, height = 4)
