@@ -153,8 +153,7 @@ p6 <- dat %>% ggplot(aes(x = year, y = Ut)) +
 
 p <- plot_grid(p1, p2, p4, p3, p5, p6, ncol = 2)
 p
-ggsave("plots/sim-demonstration.pdf", width = 8, height = 11)
-
+ggsave("plots/sim-demonstration.pdf", width = 8, height = 10)
 
 # demonstrate time-series bias with dead simple linear regression:
 nsim <- 1000
@@ -170,26 +169,28 @@ for (i in 1:nsim) {
   b_ests[i] <- b_est
 }
 
-# plot it 
+# plot it
 dat <- tibble(a_est = exp(a_ests), b_est = b_ests)
 a <- dat %>%
-  ggplot(aes(x = a_est)) + 
-  geom_histogram(bins = 35) + 
-  geom_vline(xintercept = reca,
-             color = "steelblue",
-             linetype = 2, size = 1
+  ggplot(aes(x = a_est)) +
+  geom_histogram(bins = 35) +
+  geom_vline(
+    xintercept = reca,
+    color = "steelblue",
+    linetype = 2, size = 1
   ) +
-  xlab("Estimates of alpha vs. truth")+
+  xlab("Estimates of alpha vs. truth") +
   theme_qfc()
 
 b <- dat %>%
-  ggplot(aes(x = b_est)) + 
-  geom_histogram(bins = 35) + 
-  geom_vline(xintercept = recb,
-             color = "steelblue",
-             linetype = 2, size = 1
+  ggplot(aes(x = b_est)) +
+  geom_histogram(bins = 35) +
+  geom_vline(
+    xintercept = recb,
+    color = "steelblue",
+    linetype = 2, size = 1
   ) +
-  xlab("Estimates of beta vs. truth")+
+  xlab("Estimates of beta vs. truth") +
   theme_qfc()
 
 p <- plot_grid(a, b, ncol = 2)
