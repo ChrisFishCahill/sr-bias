@@ -4,8 +4,7 @@ library(cowplot)
 devtools::install_github("ChrisFishCahill/gg-qfc")
 library(ggqfc)
 
-# TODO:
-# set up Req yet for Umsy + reference point calcs
+# TODO: set up Req yet for Umsy + reference point calcs
 
 # set leading parameters
 Linf <- 1
