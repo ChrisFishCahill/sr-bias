@@ -200,7 +200,8 @@ ggsave("plots/reg-test.pdf", width = 5, height = 2.5)
 
 #-----------------------
 # TMB
-# NOTE: work in progress
+# NOTE!!!
+# Ths section a work in progress!
 
 cppfile <- "src/sr_bias_simple.cpp"
 compile(cppfile)
