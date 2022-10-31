@@ -176,20 +176,20 @@ ggsave("plots/sim-demonstration.pdf", width = 8, height = 10)
 
 # demonstrate bias with dead simple linear regression
 # note this is due to both errors in variables and time series bias
-nsim <- 10000
-a_ests <- b_ests <- rep(NA, nsim)
+nsim <- 100
+ar_ests <- b_ests <- rep(NA, nsim)
 set.seed(1)
 for (i in 1:nsim) {
   dat <- run_model()
-  fit <- lm(dat$ln_rs ~ dat$s) # ln(R/S) = ln(alpha) - beta*S
-  a_est <- fit$coefficients[1]
-  b_est <- -fit$coefficients[2]
+  fit <- lm(dat$ln_RS ~ Xt) # ln(R/S) = ln(alpha) + beta*S
+  ar_est <- fit$coefficients[1]
+  b_est <- - fit$coefficients[2] # convert to -beta
   a_ests[i] <- a_est
   b_ests[i] <- b_est
 }
 
 # plot it
-dat <- tibble(a_est = exp(a_ests), b_est = b_ests)
+dat <- tibble(a_est = exp(ar_ests), b_est = b_ests)
 a <- dat %>%
   ggplot(aes(x = a_est)) +
   geom_histogram(bins = 35) +
@@ -215,7 +215,7 @@ b <- dat %>%
 p <- plot_grid(a, b, ncol = 2)
 p
 
-ggsave("plots/reg-test.pdf", width = 5, height = 2.5)
+ggsave("plots/reg-test.pdf", width = 7, height = 4)
 
 #-----------------------
 # TMB
