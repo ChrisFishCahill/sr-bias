@@ -103,6 +103,7 @@ run_model <- function() {
 }
 
 # call the sim f(x) once to visualize
+set.seed(3)
 dat <- run_model()
 
 p1 <- dat %>% ggplot(aes(x = year, y = yield)) +
@@ -152,6 +153,8 @@ p6 <- dat %>% ggplot(aes(x = year, y = Ut)) +
 
 p <- plot_grid(p1, p2, p4, p3, p5, p6, ncol = 2)
 p
+ggsave("plots/sim-demonstration.pdf", width = 8, height = 11)
+
 
 # demonstrate time-series bias with dead simple linear regression:
 nsim <- 1000
@@ -191,6 +194,9 @@ b <- dat %>%
 
 p <- plot_grid(a, b, ncol = 2)
 p
+
+ggsave("plots/reg-test.pdf", width = 5, height = 2.5)
+
 #-----------------------
 # TMB
 # NOTE: work in progress

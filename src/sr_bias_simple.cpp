@@ -2,30 +2,29 @@
 template<class Type>
 Type objective_function<Type>::operator() ()
 {
-  DATA_VECTOR(ln_RS);            
+  DATA_VECTOR(R); 
   DATA_VECTOR(S);            
-  Type n_t = ln_RS.size(); 
+  Type n_t = R.size(); 
   
   PARAMETER(ln_a);
   PARAMETER(ln_b);
   PARAMETER(ln_sdp);                // process sd
   PARAMETER(ln_sdm);                // measurement sd 
-  PARAMETER(logit_rho);             // ar(1) parameter 
-  PARAMETER_VECTOR(wt);             // latent state random coefficients
-  // PARAMETER(wto); 
-  Type rho = invlogit(logit_rho); 
+  PARAMETER(logit_phi);             // ar(1) parameter 
+  PARAMETER_VECTOR(ln_o);           // latent state random coefficients
+  PARAMETER(ln_ro); 
+  Type phi = invlogit(logit_phi); 
   
   Type jnll = 0;
-  
-  // probability of random coefficients--wt is a vector of latent states
-  jnll -= dnorm(wt(0), ln_a - exp(ln_b)*S(0), exp(ln_sdp), true);  
-  for( int t=1; t<n_t-1; t++){
-    jnll -= dnorm( wt(t), rho*wt(t-1), exp(ln_sdp)/(1-pow(rho,2)), true); 
+  // probability of random coefficients
+  jnll -= dnorm(ln_o(0), ln_ro, exp(ln_sdp), true);  
+  for( int t=1; t<n_t; t++){
+    jnll -= dnorm( ln_o(t), log(S(t)) + ln_a - exp(ln_b)*S(t) + phi*ln_o(t-1), exp(ln_sdp), true); 
   }
 
   // probability of data conditional on fixed and random effect values
-  for( int t=1; t<n_t; t++){
-    jnll -= dnorm( ln_RS(t), ln_a - exp(ln_b)*S(t) + wt(t), exp(ln_sdm), true );
+  for( int t=0; t<n_t; t++){
+    jnll -= dnorm( log(R(t)), ln_o(t), exp(ln_sdm), true );
   }
   
   // reporting
@@ -33,7 +32,7 @@ Type objective_function<Type>::operator() ()
   Type sdm = exp(ln_sdm);
   REPORT(sdp);
   REPORT(sdm);
-  REPORT(rho); 
+  REPORT(phi); 
   
   return jnll;
 }
