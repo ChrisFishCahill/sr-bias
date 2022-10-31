@@ -162,7 +162,7 @@ set.seed(1)
 
 for (i in 1:nsim) {
   dat <- run_model()
-  fit <- lm(dat$R ~ dat$S)
+  fit <- lm(dat$ln_RS ~ dat$S)
   a_est <- fit$coefficients[1]
   b_est <- -fit$coefficients[2]
   a_ests[i] <- a_est
