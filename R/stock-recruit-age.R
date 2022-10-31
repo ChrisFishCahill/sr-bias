@@ -157,6 +157,7 @@ p
 nsim <- 1000
 a_ests <- b_ests <- rep(NA, nsim)
 set.seed(1)
+
 for (i in 1:nsim) {
   dat <- run_model()
   fit <- lm(dat$R ~ dat$S)
@@ -166,19 +167,30 @@ for (i in 1:nsim) {
   b_ests[i] <- b_est
 }
 
-# plot it
-par(mfrow = c(1, 2))
-hist(exp(a_ests),
-  main = "normal ricker",
-  xlab = "ln alpha est", breaks = 20
-)
-abline(v = reca, lwd = 2, col = "blue") # true value
-hist(b_ests,
-  main = "normal ricker", xlab = "beta est",
-  breaks = 20, xlim = c(min(b_ests), recb + 0.2)
-)
-abline(v = recb, lwd = 2, col = "blue") # true value
+# plot it 
+dat <- tibble(a_est = exp(a_ests), b_est = b_ests)
+a <- dat %>%
+  ggplot(aes(x = a_est)) + 
+  geom_histogram(bins = 35) + 
+  geom_vline(xintercept = reca,
+             color = "steelblue",
+             linetype = 2, size = 1
+  ) +
+  xlab("Estimates of alpha vs. truth")+
+  theme_qfc()
 
+b <- dat %>%
+  ggplot(aes(x = b_est)) + 
+  geom_histogram(bins = 35) + 
+  geom_vline(xintercept = recb,
+             color = "steelblue",
+             linetype = 2, size = 1
+  ) +
+  xlab("Estimates of beta vs. truth")+
+  theme_qfc()
+
+p <- plot_grid(a, b, ncol = 2)
+p
 #-----------------------
 # TMB
 # NOTE: work in progress
