@@ -87,9 +87,8 @@ run_model <- function() {
       }
     }
   }
-
-  S <- nta[1:(n_year - 1), 1] # take S from 1:99
-  R <- nta[2:(n_year), 1] # take R from 2:100
+  S <- nta[1:(n_year - 1), 1] # S from 1:99
+  R <- nta[2:(n_year), 1] # R from 2:100
   out <- tibble(
     S = S, R = R, ln_RS = log(R / S),
     yield = yield[1:(n_year - 1)],
@@ -103,7 +102,7 @@ run_model <- function() {
   out
 }
 
-# call the sim f(x)
+# call the sim f(x) once to visualize
 dat <- run_model()
 
 p1 <- dat %>% ggplot(aes(x = year, y = yield)) +
@@ -118,8 +117,10 @@ p2 <- dat %>% ggplot(aes(x = year, y = vulb)) +
   geom_line() +
   ggtitle("Vulnerable biomass") +
   theme_qfc() +
-  geom_hline(yintercept = vbo, linetype = 2, 
-             color = "steelblue", size = 0.7) + 
+  geom_hline(
+    yintercept = vbo, linetype = 2,
+    color = "steelblue", size = 0.7
+  ) +
   theme(plot.title = element_text(hjust = 0.5))
 
 p3 <- dat %>% ggplot(aes(x = S, y = ln_RS)) +
@@ -152,7 +153,36 @@ p6 <- dat %>% ggplot(aes(x = year, y = Ut)) +
 p <- plot_grid(p1, p2, p4, p3, p5, p6, ncol = 2)
 p
 
+# demonstrate time-series bias with dead simple linear regression:
+nsim <- 1000
+a_ests <- b_ests <- rep(NA, nsim)
+set.seed(1)
+for (i in 1:nsim) {
+  dat <- run_model()
+  fit <- lm(dat$R ~ dat$S)
+  a_est <- fit$coefficients[1]
+  b_est <- -fit$coefficients[2]
+  a_ests[i] <- a_est
+  b_ests[i] <- b_est
+}
+
+# plot it
+par(mfrow = c(1, 2))
+hist(exp(a_ests),
+  main = "normal ricker",
+  xlab = "ln alpha est", breaks = 20
+)
+abline(v = reca, lwd = 2, col = "blue") # true value
+hist(b_ests,
+  main = "normal ricker", xlab = "beta est",
+  breaks = 20, xlim = c(min(b_ests), recb + 0.2)
+)
+abline(v = recb, lwd = 2, col = "blue") # true value
+
 #-----------------------
+# TMB
+# NOTE: work in progress
+
 cppfile <- "src/sr_bias_simple.cpp"
 compile(cppfile)
 dyn.load(dynlib("src/sr_bias_simple"))
