@@ -156,10 +156,9 @@ p
 ggsave("plots/sim-demonstration.pdf", width = 8, height = 10)
 
 # demonstrate time-series bias with dead simple linear regression:
-nsim <- 1000
+nsim <- 10000
 a_ests <- b_ests <- rep(NA, nsim)
 set.seed(1)
-
 for (i in 1:nsim) {
   dat <- run_model()
   fit <- lm(dat$ln_RS ~ dat$S)
