@@ -40,11 +40,12 @@ Type objective_function<Type>::operator() ()
 {
   DATA_INTEGER(k);               // age at maturity 
   DATA_VECTOR(E);                // escapements
+  DATA_VECTOR(C);                // catches
   int n_year = E.size();         // total number of years
  
   PARAMETER(ar);                 // ln(a)
   PARAMETER(b);                  // ricker b
-  PARAMETER_VECTOR(ln_Sinit);    // initialize the with Sinit vector of .size() = k
+  PARAMETER_VECTOR(Sinit);       // initialize the with Sinit vector of .size() = k
   PARAMETER(ln_sd_E);            // observation error
   PARAMETER(ln_sd_R);            // process error
   
@@ -56,19 +57,19 @@ Type objective_function<Type>::operator() ()
   
   // initialize state variables
   for(int t = 0; t < k; t ++){
-    S(t) = exp(ln_Sinit(t));
+    S(t) = Sinit(t);
   }
   
   Type jnll = 0;
   for(int t = 0; t < n_year - k; t++){
     mu(t) = ar + log(S(t)) - b*S(t); 
-    S(t + k) = R(t) - E(t);                        // note R and E represent R(t+k) and E(t+k)
+    S(t + k) = R(t) - C(t);                        // note R and E represent R(t+k) and C(t+k)
     jnll -= dlnorm(R(t), mu(t), exp(ln_sd_R));     // process error in recruitment
   }
 
   for(int t = 0; t < k; t ++){
     jnll -= dlnorm(E(t), log(S(t)), exp(ln_sd_E)); // observation error
   }
-  
+
   return jnll;
 }
