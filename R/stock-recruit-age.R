@@ -21,9 +21,9 @@ Ma <- -log(Sad)
 ages <- 1:15
 n_year <- 100
 Ro <- 1
-RecK <- 5         # Goodyear compensaiton ratio
-sdwt <- 0.25       # standard deviation Rec
-rhor <- 0         # autocorrelation for Rec
+RecK <- 5 # Goodyear compensaiton ratio
+sdwt <- 0.25 # standard deviation Rec
+rhor <- 0 # autocorrelation for Rec
 sdvt <- sqrt(0.1) # obs error in spawning stock size
 
 # set up leading vectors
@@ -91,32 +91,32 @@ run_model <- function() {
     }
   }
   # true values
-  r <- nta[2:n_year, 1]         # r from 2:n_year; recby in carl's code
-  e <- eggs[1:(n_year-1)]       # eggs from 1:(n_year-1)
-  ln_rs = log(r/e)              # true relationship
+  r <- nta[2:n_year, 1] # r from 2:n_year; recby in carl's code
+  e <- eggs[1:(n_year - 1)] # eggs from 1:(n_year-1)
+  ln_rs <- log(r / e) # true relationship
 
   # generate observed values
-  vt <- rnorm(length(e), sdvt)  # iid sampling errors
-  S <- e * exp(vt)              # Escapement w/ lognormal sampling error
-  R <- S + C[1:(n_year - 1)]    # assume catch measured perfectly
+  # vt <- rnorm(length(e), sdvt) # iid sampling errors
+  # S <- e * exp(vt) # Escapement w/ lognormal sampling error
+  # R <- S + C[1:(n_year - 1)] # assume catch measured perfectly
 
   out <- tibble(
     # "true" stuff
-    s = e, r = r, ln_rs = ln_rs,  
+    s = e, r = r, ln_rs = ln_rs,
     yield = yield[1:(n_year - 1)],
     Ut = Ut[1:n_year - 1],
     vulb = vulb[1:(n_year - 1)], reca = rep(reca, n_year - 1),
     recb = rep(recb, n_year - 1), rdev = rdev[1:(n_year - 1)],
     Bo = rep(Bo, n_year - 1),
-    sdc = rep(sdc, (n_year - 1)),  sdwt = rep(sdwt, (n_year - 1)), 
+    sdc = rep(sdc, (n_year - 1)), sdwt = rep(sdwt, (n_year - 1)),
     sdvt = rep(sdvt, (n_year - 1)),
-    rhor = rep(rhor, (n_year - 1)), 
+    rhor = rep(rhor, (n_year - 1)),
     vt = vt, wt = rdev,
-    year = 1:(n_year - 1), 
+    year = 1:(n_year - 1),
     C = C[1:(n_year - 1)],
-    
+
     # corrupted stuff
-    R = R, S = S, ln_RS = log(R/S)
+    R = R, S = S, ln_RS = log(R / S)
   )
   out
 }
@@ -176,16 +176,16 @@ ggsave("plots/sim-demonstration.pdf", width = 8, height = 10)
 
 # demonstrate bias with simple linear regression
 
-nsim <- 10000
+nsim <- 1000
 ar_ests <- b_ests <- rep(NA, nsim)
 set.seed(1)
-U = 0.2
+U <- 0.3
 for (i in 1:nsim) {
   dat <- run_model()
-  dat = dat[(nrow(dat) - 30):nrow(dat),]
-  fit <- lm(dat$ln_rs ~ dat$s) 
+  dat <- dat[(nrow(dat) - 50):nrow(dat), ]
+  fit <- lm(dat$ln_rs ~ dat$s)
   ar_est <- fit$coefficients[1]
-  b_est <- - fit$coefficients[2] # convert to -beta
+  b_est <- -fit$coefficients[2] # convert to -beta
   ar_ests[i] <- ar_est
   b_ests[i] <- b_est
 }
@@ -194,7 +194,7 @@ median(exp(b_ests) - recb)
 
 # plot it
 dat <- tibble(a_est = exp(ar_ests), b_est = b_ests)
-        
+
 a <- dat %>%
   ggplot(aes(x = a_est)) +
   geom_histogram(bins = 35) +
@@ -224,31 +224,47 @@ ggsave("plots/reg-test.pdf", width = 7, height = 4)
 
 #-----------------------
 # TMB
-# NOTE!!!
-# Ths section a work in progress!
-
-cppfile <- "src/sr_bias_simple.cpp"
+cppfile <- "src/ss_ricker.cpp"
 compile(cppfile)
-dyn.load(dynlib("src/sr_bias_simple"))
+dyn.load(dynlib("src/ss_ricker"))
 
-phi_start <- 0
-parameters <- list(
-  "ln_a" = log(1.6),
-  "ln_b" = log(10.5),
-  "ln_sdp" = log(0.05), "ln_sdm" = log(0.1),
-  logit_phi = exp(phi_start) / (1 + exp(phi_start)),
-  "ln_o" = rep(0, n_year),
-  ln_ro = log(1)
+data <- list(
+  "k" = 2, 
+  "E" = c(
+    1.062,
+    1.179, 1.385, 1.213, 1.176, 1.385, 1.141, 0.944, 1.087, 1.119,
+    0.966, 0.918, 0.793, 0.775, 0.645, 0.661, 0.548, 0.703, 0.807,
+    0.792, 0.9, 1.007, 1.222, 1.269, 1.001, 1.108, 1.032, 1.099
+  ),
+  "C" = c(
+    0.165, 0.23, 0.272, 0.34, 0.385, 0.409, 0.508, 0.596,
+    0.609, 0.669, 0.674, 0.779, 0.708, 0.864, 0.611, 0.658, 0.631,
+    0.583, 0.548, 0.534, 0.556, 0.513, 0.332, 0.319, 0.235, 0.2
+  )
 )
-random <- c("ln_o")
+par <- list(
+  "ar" = log(3),
+  "b" = 0.5,
+  "ln_Sinit" = rep(log(3),2),
+  "ln_sd_E" = -2,
+  "ln_sd_R" = -6, 
+  "ln_R" = rep(log(2),length(data$C)) 
+  )
 
-data <- list("R" = recby, "S" = S)
-obj <- MakeADFun(data = data, parameters = parameters, random = random)
+compile(cppfile)
+dyn.load(dynlib("src/ss_ricker"))
+random = "ln_R"
+obj <- MakeADFun(data = data, parameters = par)
 
 obj$fn(obj$par)
 obj$gr(obj$par)
+opt <- nlminb(start = obj$par, objective = obj$fn, gradient = obj$gr, 
+              eval.max = 1000, iter.max = 500)
 
-opt <- nlminb(start = obj$par, objective = obj$fn, gradient = obj$gr)
+opt <- nlminb(start = opt$par, objective = obj$fn, gradient = obj$gr, 
+              eval.max = 1000, iter.max = 500)
+
+
 report <- obj$report()
 opt$SD <- sdreport(obj)
 opt$SD
