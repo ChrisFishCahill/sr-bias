@@ -6,28 +6,29 @@ n_year <- 100
 a <- 1.64 # ricker alpha
 ar <- log(a)
 b <- 1
-sdp <- 0.01 # process error
+sdp <- 0.05 # process error
 sdo <- 0.3 # observation error
-h <- runif(n_year - k, 0.01, 0.35) # harvest rate
 
-E <- S <- rep(NA, n_year)
-C <- R <- rep(NA, n_year - k) 
+E <- S <- rep(NA, n_year) # Escapement, Stock
+C <- R <- rep(NA, n_year - k) # Catch, Recruits
 
 # Initialize S and C
 S[1:k] <- ar / b # R' = S' = ln(a)/b = equilibrium SR
 
 set.seed(1)
-wt <- rnorm((n_year - 2), 0, sd = sdp)
+h <- runif(n_year - k, 0.01, 0.35) # harvest rate
+wt <- rnorm((n_year - 2), 0, sd = sdp) # process noise 
 for (t in 1:(n_year - k)) {
-  R[t] <- a * S[t] * exp(-b * S[t] + wt[t]) # process noise 
+  R[t] <- a * S[t] * exp(-b * S[t] + wt[t]) # truth + process noise 
   C[t] <- h[t] * R[t]
   S[t + k] <- R[t] - C[t]
 }
 
-# calculate observed values | process component of model
+# now add in observation noise
 vt <- rnorm(n_year, 0, sdo)
 E <- S * exp(vt) # obs. noise
 
+# plot it 
 plot(log(R / S[(k + 1):n_year]) ~ S[(k + 1):n_year],
      ylab = "ln(R/S) vs. S",
      xlab = "S"
