@@ -6,8 +6,8 @@ n_year <- 100
 a <- 1.64 # ricker alpha
 ar <- log(a)
 b <- 1
-sdp <- 0.05 # process error
-sdo <- 0.3 # observation error
+sdp <- 0.05 # process error sd 
+sdo <- 0.3 # observation error sd
 
 E <- S <- rep(NA, n_year) # Escapement, Stock
 C <- R <- rep(NA, n_year - k) # Catch, Recruits
