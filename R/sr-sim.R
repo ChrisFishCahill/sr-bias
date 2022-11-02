@@ -12,7 +12,7 @@ sdo <- 0.3 # observation error
 E <- S <- rep(NA, n_year) # Escapement, Stock
 C <- R <- rep(NA, n_year - k) # Catch, Recruits
 
-# Initialize S and C
+# Initialize S 
 S[1:k] <- ar / b # R' = S' = ln(a)/b = equilibrium SR
 
 set.seed(1)
