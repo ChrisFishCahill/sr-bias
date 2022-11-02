@@ -45,31 +45,43 @@ Type objective_function<Type>::operator() ()
  
   PARAMETER(ar);                 // ln(a)
   PARAMETER(b);                  // ricker b
-  PARAMETER_VECTOR(Sinit);       // initialize the with Sinit vector of .size() = k
-  PARAMETER(ln_sd_E);            // observation error
-  PARAMETER(ln_sd_R);            // process error
-  
-  vector<Type> S(n_year);        // true spawners
-  vector<Type> R(n_year);        // true recruits
-  vector<Type> mu(n_year);       // predictions
-  
-  S.setZero(); R.setZero(); mu.setZero();  
+  PARAMETER_VECTOR(ln_Sinit);    // initialize the with Sinit vector of .size() = k
+  PARAMETER(ln_sdo);             // observation error
+  PARAMETER(ln_sdp);             // process error
+  PARAMETER_VECTOR(ln_R);        // ln(Rt)
+  vector<Type> S(n_year);        // spawners
+  vector<Type> mu(n_year-k);     // predictions
+  vector<Type> R(n_year-k); 
+  S.setZero(); mu.setZero(); R.setZero(); 
   
   // initialize state variables
   for(int t = 0; t < k; t ++){
-    S(t) = Sinit(t);
+    S(t) = exp(ln_Sinit[t]);
   }
   
   Type jnll = 0;
+  
   for(int t = 0; t < n_year - k; t++){
     mu(t) = ar + log(S(t)) - b*S(t); 
-    S(t + k) = R(t) - C(t);                        // note R and E represent R(t+k) and C(t+k)
-    jnll -= dlnorm(R(t), mu(t), exp(ln_sd_R));     // process error in recruitment
+    jnll -= dlnorm(ln_R(t), mu(t), exp(ln_sdp), true);          // process error 
+    R(t) = exp(ln_R(t)); 
+    S(t + k) = R(t) - C(t); 
   }
 
-  for(int t = 0; t < k; t ++){
-    jnll -= dlnorm(E(t), log(S(t)), exp(ln_sd_E)); // observation error
+  for(int t = 0; t < n_year; t ++){
+    jnll -= dlnorm(E(t), S(t), exp(ln_sdo), true);              // observation error
   }
+  
+  Type sdo = exp(ln_sdo); 
+  Type sdp = exp(ln_sdp); 
+  
+  REPORT(S); 
+  REPORT(R); 
+  REPORT(C); 
+  REPORT(mu); 
+  REPORT(E); 
+  REPORT(sdp); 
+  REPORT(sdo); 
 
   return jnll;
 }
