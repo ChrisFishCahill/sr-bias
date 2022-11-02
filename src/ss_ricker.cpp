@@ -51,6 +51,7 @@ Type objective_function<Type>::operator() ()
 
   for(int t = 0; t < n_year; t ++){
     jnll -= dlnorm(E(t), exp(S(t)), exp(ln_sdo), true);  // observation error
+  }
   
   REPORT(S); 
   REPORT(R); 
