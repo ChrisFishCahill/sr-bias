@@ -10,9 +10,9 @@ sdp <- 0.05 # process error sd
 sdo <- 0.3 # observation error sd
 
 E <- S <- rep(NA, n_year) # Escapement, Stock
-C <- R <- h <- rep(NA, n_year) # Catch, Recruits, finite harvest rate
+C <- R <- rep(NA, n_year) # Catch, Recruits
 
-# Initialize S, R, C
+# set up exploitation rate sequence
 Ut <- rep(NA, n_year)
 U = 0.5
 relU <- seq(from = 0, to = 1, by = 0.02)
@@ -20,10 +20,9 @@ Ut[1:length(relU)] <- relU
 Ut[which(is.na(Ut))] <- 1
 Ut <- Ut * U
 
-#set.seed(1)
-# h[(k + 1):n_year] <- runif(n_year - k, 0.1, 0.35) # harvest rate
+set.seed(1)
 wt <- rnorm(n_year-k, 0, sd = sdp) # process noise
-
+# Initialize S, R, C
 S[1:k] <- ar / b # S' = ln(a)/b = equilibrium S
 R[1:k] <- ar / b # R' = ln(a)/b = equilibrium R
 C[1:k] <- Ut[1:k] * R[1:k] # equilibrium C given constant h = 0.1
@@ -55,6 +54,9 @@ b
 # estimate it in stan
 #--------------------------------------------------------------------------
 library(rstan)
+library(tidyverse)
+library(tidybayes)
+
 options(mc.cores = parallel::detectCores())
 
 # eliminate redundant compilations
@@ -71,11 +73,11 @@ stan_data <-
     "n_year" = n_year,
     "E" = E,
     "C" = C[(k+1):n_year], 
-    ar_prior = c(1, 5), 
-    b_prior = c(1, 5),
-    sdp_prior = c(0, 1), 
-    sdo_prior = c(0, 5), 
-    So_prior = c(0, 5)
+    ar_prior = c(1, 3), 
+    b_prior = c(1, 3),
+    sdp_prior = c(0, 0.5), 
+    sdo_prior = c(0, 1), 
+    So_prior = c(0, 3)
   )
 
 inits <- function() {
@@ -93,23 +95,37 @@ fit <-
   rstan::sampling(
     m,
     data = stan_data,
-    pars = c("ar", "b", "sdo", "sdp", "So", "R"),
-    iter = 8000, chains = 4, 
+    pars = c("ar", "b", "sdo", "sdp", "So", "R", "S"),
+    iter = 3000, chains = 4, 
     control=list(adapt_delta = 0.999, max_treedepth = 12)
   )
 
-shinystan::launch_shinystan(fit)
+# shinystan::launch_shinystan(fit)
 
 library(tidybayes)
 library(tidyverse)
 
-fit %>%
-  spread_draws(R[year]) %>%
-  ggplot(aes(x = R)) + 
-  geom_violin()
+# see how we stack up against truth 
+ar
+b
+sdo
+sdp
+S[1:2] #So 1,2
+fit
+
+fit %>% spread_draws(R[year]) %>%
+  median_qi() %>% 
+  bind_cols(Rtrue = R[(k+1):n_year]) %>%
+  ggplot(aes(x = year, y = R, ymin = .lower, ymax = .upper)) + 
+  geom_pointinterval() + 
+  geom_point(Rtrue, col = "Red")
+  
+
+
+summarise()
 
 #-------------------------------------------------------------------------------
-# now try TMB
+# now try TMB -- not yet working
 #-------------------------------------------------------------------------------
 library(TMB)
 
