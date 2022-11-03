@@ -7,14 +7,14 @@ ar <- 1 # ln( ricker alpha)
 a <- exp(ar) 
 b <- 1
 sdp <- 0.05 # process error sd
-sdo <- 0.1 # observation error sd
+sdo <- 0.3 # observation error sd
 
 E <- S <- rep(NA, n_year) # Escapement, Stock
 C <- R <- h <- rep(NA, n_year) # Catch, Recruits, finite harvest rate
 
 # Initialize S, R, C
 Ut <- rep(NA, n_year)
-U = 0.45
+U = 0.5
 relU <- seq(from = 0, to = 1, by = 0.02)
 Ut[1:length(relU)] <- relU
 Ut[which(is.na(Ut))] <- 1
@@ -45,13 +45,71 @@ plot(log(R / S) ~ S,
      xlab = "S"
 )
 plot(R ~ S, "ylab" = "Recruits", xlab = "Stock")
-#plot(S)
-#plot(R)
-#summary(lm(log(R / S) ~ S))
+plot(R ~ E, "ylab" = "Recruits", xlab = "Escapement")
+
 confint(lm(log(R / S) ~ S))
+ar
+b
+
+#--------------------------------------------------------------------------
+# estimate it in stan
+#--------------------------------------------------------------------------
+library(rstan)
+options(mc.cores = parallel::detectCores())
+
+# eliminate redundant compilations
+rstan::rstan_options(auto_write = TRUE)
+
+# compile the stan model
+path <- "src/ss_ricker.stan"
+m <- rstan::stan_model(path, verbose = T)
+
+# set up the data and the initial values
+stan_data <-
+  list(
+    "k" = k,
+    "n_year" = n_year,
+    "E" = E,
+    "C" = C[(k+1):n_year], 
+    ar_prior = c(1, 5), 
+    b_prior = c(1, 5),
+    sdp_prior = c(0, 1), 
+    sdo_prior = c(0, 5), 
+    So_prior = c(0, 5)
+  )
+
+inits <- function() {
+  list(
+    "ar" = jitter(ar),
+    "b" = jitter(b),
+    "sdo" = jitter(log(sdo)),
+    "sdp" = jitter(log(sdp)),
+    "R" = rep(jitter(1), length((k+1):n_year)), 
+    "So" = jitter(c(1,1))
+  )
+}
+
+fit <-
+  rstan::sampling(
+    m,
+    data = stan_data,
+    pars = c("ar", "b", "sdo", "sdp", "So", "R"),
+    iter = 8000, chains = 4, 
+    control=list(adapt_delta = 0.999, max_treedepth = 12)
+  )
+
+shinystan::launch_shinystan(fit)
+
+library(tidybayes)
+library(tidyverse)
+
+fit %>%
+  spread_draws(R[year]) %>%
+  ggplot(aes(x = R)) + 
+  geom_violin()
 
 #-------------------------------------------------------------------------------
-# TMB
+# now try TMB
 #-------------------------------------------------------------------------------
 library(TMB)
 
@@ -65,14 +123,13 @@ par <- list(
   "br" = log(b),
   "ln_sdo" = log(sdo),
   "ln_sdp" = log(sdp),
-  "ln_R" = log(jitter(R[(k+1):n_year])),
-  "ln_So" = c(log(S[1]), log(S[2]))
+  "wt" = rep(0, length((k+1):n_year))
 )
 
 cppfile <- "src/ss_ricker.cpp"
 compile(cppfile)
 dyn.load(dynlib("src/ss_ricker"))
-random = "ln_R"
+random = "wt"
 obj <- MakeADFun(data = data, parameters = par, random = random)
 
 obj$fn(obj$par)
@@ -100,5 +157,3 @@ abline(0,1)
 plot(obj$report(opt$par)$`S` ~ S[1:n_year])
 abline(0,1)
 obj$report()
-
-
