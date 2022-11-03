@@ -2,7 +2,7 @@
 # cahill, punt november 2022
 
 k <- 2 # age at maturity
-n_year <- 50
+n_year <- 30
 ar <- 1 # ln( ricker alpha)
 a <- exp(ar)
 b <- 1
@@ -187,21 +187,22 @@ library(TMB)
 data <- list(
   "k" = k,
   "E" = E,
-  "C" = C
+  "C" = C[(k + 1):n_year]
 )
+
 par <- list(
   "ar" = ar,
-  "br" = log(b),
+  "b" = b,
   "ln_sdo" = log(sdo),
   "ln_sdp" = log(sdp),
-  "wt" = rep(0, length((k + 1):n_year))
+  "R" = rep(jitter(1), length((k + 1):n_year)),
+  "ln_So" = log(jitter(c(1, 1)))
 )
 
 cppfile <- "src/ss_ricker.cpp"
 compile(cppfile)
 dyn.load(dynlib("src/ss_ricker"))
-random <- "wt"
-obj <- MakeADFun(data = data, parameters = par, random = random)
+obj <- MakeADFun(data = data, parameters = par)
 
 obj$fn(obj$par)
 obj$gr(obj$par)
@@ -209,8 +210,10 @@ obj$report()
 
 opt <- nlminb(
   start = obj$par, objective = obj$fn,
-  gradient = obj$gr
+  gradient = obj$gr, 
+  lower = c(rep(-Inf, 4), C[(k + 1):n_year], rep(-Inf, 2))
 )
+obj$gr(opt$par)
 
 opt <- nlminb(
   start = opt$par, objective = obj$fn,
