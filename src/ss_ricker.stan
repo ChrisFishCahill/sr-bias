@@ -33,13 +33,16 @@ transformed parameters {
  
 }
 model {
-  R ~ lognormal(mu, sdp);
-  E ~ lognormal(log(S), sdo);
+  // priors 
   // note, su and peterson use MVN for ar and b
   ar ~ normal(ar_prior[1], ar_prior[2]); 
   b ~ normal(b_prior[1], b_prior[2]); 
   sdp ~ normal(sdp_prior[1], sdp_prior[2]); 
   sdo ~ normal(sdo_prior[1], sdo_prior[2]); 
   So ~ lognormal(So_prior[1], So_prior[2]); 
+  
+  // likelihoods
+  R ~ lognormal(mu, sdp);
+  E ~ lognormal(log(S), sdo);
 }
 
