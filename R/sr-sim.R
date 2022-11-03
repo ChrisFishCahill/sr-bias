@@ -1,27 +1,32 @@
 # simulate su and peterson
-# cahill november 2022
+# cahill, punt november 2022
 
 k <- 2 # age at maturity
 n_year <- 100
-a <- 1.64 # ricker alpha
+a <- 1.6 # ricker alpha
 ar <- log(a)
 b <- 1
-sdp <- 0.05 # process error sd 
-sdo <- 0.3 # observation error sd
+sdp <- 0.0 # process error sd 
+sdo <- 0.1 # observation error sd
 
 E <- S <- rep(NA, n_year) # Escapement, Stock
-C <- R <- rep(NA, n_year - k) # Catch, Recruits
+C <- R <- h <- rep(NA, n_year) # Catch, Recruits, finite harvest rate
 
-# Initialize S 
-S[1:k] <- ar / b # R' = S' = ln(a)/b = equilibrium SR
+# Initialize S, R, C 
+set.seed(13)
+h[1:k] = 0.1 # constant initial harvest rate
+h[(k+1):n_year] <- runif(n_year-k, 0.01, 0.6) # harvest rate
+wt <- rnorm(n_year-k, 0, sd = sdp) # process noise 
 
-set.seed(1)
-h <- runif(n_year - k, 0.01, 0.35) # harvest rate
-wt <- rnorm((n_year - 2), 0, sd = sdp) # process noise 
+S[1:k] <- ar / b # S' = ln(a)/b = equilibrium S 
+R[1:k] <- ar / b # R' = ln(a)/b = equilibrium R
+C[1:k] <- h[1:k]*R[1:k] # equilibrium C given constant h = 0.1 
+
+# sequentially generate new recruits, catch, and spawners 
 for (t in 1:(n_year - k)) {
-  R[t] <- a * S[t] * exp(-b * S[t] + wt[t]) # truth + process noise 
-  C[t] <- h[t] * R[t]
-  S[t + k] <- R[t] - C[t]
+  R[t + k] <- a * S[t] * exp(-b * S[t] + wt[t]) # truth + process noise 
+  C[t+k] <- h[t+k] * R[t+k]
+  S[t + k] <- R[t+k] - C[t+k]
 }
 
 # now add in observation noise
@@ -29,13 +34,13 @@ vt <- rnorm(n_year, 0, sdo)
 E <- S * exp(vt) # obs. noise
 
 # plot it 
-plot(log(R / S[(k + 1):n_year]) ~ S[(k + 1):n_year],
+plot(log(R / S) ~ S,
      ylab = "ln(R/S) vs. S",
      xlab = "S"
 )
-plot(R ~ S[(k+1):n_year], "ylab" = "Recruits", xlab = "Stock")
-summary(lm(log(R / S[(k + 1):n_year]) ~ S[(k + 1):n_year]))
-plot(R ~ E[(k+1):n_year], "ylab" = "Recruits", xlab = "Escapement")
+plot(R ~ S, "ylab" = "Recruits", xlab = "Stock")
+summary(lm(log(R / S) ~ S))
+
 
 #-------------------------------------------------------------------------------
 # TMB
