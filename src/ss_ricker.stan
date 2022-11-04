@@ -7,7 +7,6 @@ data {
   vector[k] b_prior; 
   real sdp_prior; 
   real sdo_prior; 
-  vector[k] So_prior; 
 }
 parameters {
   real ar; 
@@ -15,22 +14,18 @@ parameters {
   real<lower=0> sdp;
   real<lower=0> sdo; 
   vector<lower=C>[n_year-k] R; 
-  vector<lower=0>[k] So; 
 }
 transformed parameters {
- vector[n_year - k] mu; // log(R)
+ vector[n_year - k] mu; 
  vector[n_year] S;
  
  // initialize
- for(t in 1:n_year){S[t] = 0;}
- S[1] = So[1]; 
- S[2] = So[2]; 
+ for(t in 1:n_year){S[t] = ar/b;}
 
  for(t in 1:(n_year-k)){
   mu[t] = ar + log(S[t]) - b*S[t];   
   S[t+k] = R[t] - C[t]; // R and C are t + k NOT t
  }
- 
 }
 model {
   // priors 
@@ -39,8 +34,7 @@ model {
   b ~ normal(b_prior[1], b_prior[2]); 
   sdp ~ exponential(sdp_prior); 
   sdo ~ exponential(sdo_prior); 
-  So ~ lognormal(So_prior[1], So_prior[2]); 
-  
+
   // likelihoods
   R ~ lognormal(mu, sdp);
   E ~ lognormal(log(S), sdo);
