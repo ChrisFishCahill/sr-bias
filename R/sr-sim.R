@@ -1,13 +1,17 @@
 # simulate su and peterson
-# cahill, punt november 2022
+# cahill, punt, walters november 2022
+library(tidybayes)
+library(tidyverse)
+library(cowplot)
+
 
 k <- 2 # age at maturity
-n_year <- 30
+n_year <- 60
 ar <- 1 # ln( ricker alpha)
 a <- exp(ar)
 b <- 1
-sdp <- 0.05 # process error sd
-sdo <- 0.3 # observation error sd
+sdp <- 0.03 # process error sd
+sdo <- 0.1 # observation error sd
 
 E <- S <- rep(NA, n_year) # Escapement, Stock
 C <- R <- rep(NA, n_year) # Catch, Recruits
@@ -20,12 +24,12 @@ Ut[1:length(relU)] <- relU
 Ut[which(is.na(Ut))] <- 1
 Ut <- Ut * U
 
-set.seed(1)
+set.seed(999)
 wt <- rnorm(n_year - k, 0, sd = sdp) # process noise
 # Initialize S, R, C
 S[1:k] <- ar / b # S' = ln(a)/b = equilibrium S
 R[1:k] <- ar / b # R' = ln(a)/b = equilibrium R
-C[1:k] <- Ut[1:k] * R[1:k] # equilibrium C given constant h = 0.1
+C[1:k] <- Ut[1:k] * R[1:k] 
 
 # sequentially generate new recruits, catch, and spawners
 for (t in 1:(n_year - k)) {
@@ -67,18 +71,6 @@ path <- "src/ss_ricker.stan"
 m <- rstan::stan_model(path, verbose = T)
 
 # set up the data and the initial values
-stan_data <-
-  list(
-    "k" = k,
-    "n_year" = n_year,
-    "E" = E,
-    "C" = C[(k + 1):n_year],
-    ar_prior = c(1, 3),
-    b_prior = c(1, 3),
-    sdp_prior = c(0, 0.5),
-    sdo_prior = c(0, 1),
-    So_prior = c(0, 3)
-  )
 
 inits <- function() {
   list(
@@ -91,31 +83,32 @@ inits <- function() {
   )
 }
 
+stan_data <-
+  list(
+    "k" = k,
+    "n_year" = n_year,
+    "E" = E,
+    "C" = C[(k + 1):n_year],
+    ar_prior = c(1, 0.1),
+    b_prior = c(1, 0.1),
+    sdp_prior = 10,
+    sdo_prior = 10,
+    So_prior = c(1, 2)
+  )
+
 fit <-
   rstan::sampling(
     m,
     data = stan_data,
     pars = c("ar", "b", "sdo", "sdp", "So", "R", "S"),
-    iter = 3000, chains = 4,
-    control = list(adapt_delta = 0.999, max_treedepth = 12)
+    iter = 4000, chains = 4,
+    control = list(adapt_delta = 0.99, max_treedepth = 15)
   )
 
 # shinystan::launch_shinystan(fit)
 
 #-------------------------------------------------------------------------------
 # plot stuff
-library(tidybayes)
-library(tidyverse)
-library(cowplot)
-
-# see how we stack up against truth
-ar
-b
-sdo
-sdp
-S[1:2] # So 1,2
-
-# examine the fit
 fit
 
 p1 <- fit %>%
@@ -152,7 +145,6 @@ p2 <- p2 + geom_point(
 ) +
   ggqfc::theme_qfc()
 p2
-
 
 p3 <- fit %>%
   gather_draws(ar, b, sdp, sdo) %>%

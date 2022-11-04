@@ -5,8 +5,8 @@ data {
   vector[n_year-k] C; 
   vector[k] ar_prior; 
   vector[k] b_prior; 
-  vector[k] sdp_prior; 
-  vector[k] sdo_prior; 
+  real sdp_prior; 
+  real sdo_prior; 
   vector[k] So_prior; 
 }
 parameters {
@@ -37,8 +37,8 @@ model {
   // note, su and peterson use MVN for ar and b
   ar ~ normal(ar_prior[1], ar_prior[2]); 
   b ~ normal(b_prior[1], b_prior[2]); 
-  sdp ~ normal(sdp_prior[1], sdp_prior[2]); 
-  sdo ~ normal(sdo_prior[1], sdo_prior[2]); 
+  sdp ~ exponential(sdp_prior); 
+  sdo ~ exponential(sdo_prior); 
   So ~ lognormal(So_prior[1], So_prior[2]); 
   
   // likelihoods
