@@ -56,7 +56,7 @@ LorenzenS <- ((exp(vbk * (ages + 1)) - 1) / (exp(vbk * ages) - 1))^(-Ma / vbk)
 
 # initialize recruits, eggs, nta matrix, etc
 nta <- matrix(NA, nrow = n_year, ncol = length(ages))
-eggs <- Ut <- rdev <- vulb <- ln_RS <- yield <- C <- rep(NA, n_year)
+eggs <- Ut <- rdev <- vulb <- yield <- C <- rep(NA, n_year)
 nta[1, ] <- Ro * Surv0
 eggs[1] <- sum(nta[1, ] * fa)
 vulb[1] <- sum(nta[1, ] * vul * wa)
@@ -111,12 +111,13 @@ run_model <- function() {
     sdc = rep(sdc, (n_year - 1)), sdwt = rep(sdwt, (n_year - 1)),
     sdvt = rep(sdvt, (n_year - 1)),
     rhor = rep(rhor, (n_year - 1)),
-    vt = vt, wt = rdev,
+    # vt = vt,
+    wt = rdev,
     year = 1:(n_year - 1),
-    C = C[1:(n_year - 1)],
+    C = C[1:(n_year - 1)]
 
     # corrupted stuff
-    R = R, S = S, ln_RS = log(R / S)
+    # R = R, S = S, ln_RS = log(R / S)
   )
   out
 }
@@ -179,10 +180,9 @@ ggsave("plots/sim-demonstration.pdf", width = 8, height = 10)
 nsim <- 1000
 ar_ests <- b_ests <- rep(NA, nsim)
 set.seed(1)
-U <- 0.3
 for (i in 1:nsim) {
   dat <- run_model()
-  dat <- dat[(nrow(dat) - 50):nrow(dat), ]
+  # dat <- dat[(nrow(dat) - 50):nrow(dat), ]
   fit <- lm(dat$ln_rs ~ dat$s)
   ar_est <- fit$coefficients[1]
   b_est <- -fit$coefficients[2] # convert to -beta
@@ -227,33 +227,25 @@ ggsave("plots/reg-test.pdf", width = 7, height = 4)
 cppfile <- "src/ss_ricker.cpp"
 compile(cppfile)
 dyn.load(dynlib("src/ss_ricker"))
+vt = rnorm(n_year-1, 0, sdvt)
 
 data <- list(
   "k" = 2, 
-  "E" = c(
-    1.062,
-    1.179, 1.385, 1.213, 1.176, 1.385, 1.141, 0.944, 1.087, 1.119,
-    0.966, 0.918, 0.793, 0.775, 0.645, 0.661, 0.548, 0.703, 0.807,
-    0.792, 0.9, 1.007, 1.222, 1.269, 1.001, 1.108, 1.032, 1.099
-  ),
-  "C" = c(
-    0.165, 0.23, 0.272, 0.34, 0.385, 0.409, 0.508, 0.596,
-    0.609, 0.669, 0.674, 0.779, 0.708, 0.864, 0.611, 0.658, 0.631,
-    0.583, 0.548, 0.534, 0.556, 0.513, 0.332, 0.319, 0.235, 0.2
-  )
+  "E" = dat$s*exp(vt), # observation 
+  "C" = dat$C
 )
+
 par <- list(
   "ar" = log(3),
-  "b" = 0.5,
-  "ln_Sinit" = rep(log(3),2),
-  "ln_sd_E" = -2,
-  "ln_sd_R" = -6, 
-  "ln_R" = rep(log(2),length(data$C)) 
+  "br" = 0.5,
+  "ln_sdo" = log(0.0001),
+  "ln_sdp" = log(sdp), 
+  "ln_R" = log(dat$r[1:(n_year-2)]),
+  "ln_So" = rep(log(dat$s[1]),2)
   )
 
 compile(cppfile)
 dyn.load(dynlib("src/ss_ricker"))
-random = "ln_R"
 obj <- MakeADFun(data = data, parameters = par)
 
 obj$fn(obj$par)
