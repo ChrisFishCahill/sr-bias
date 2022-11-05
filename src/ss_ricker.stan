@@ -22,16 +22,18 @@ transformed parameters {
  real sdo = exp(ln_sdo); 
  real sdp = exp(ln_sdp); 
  
- // initialize
+ // initialize S[1:k]
  for(t in 1:n_year){S[t] = So[k];}
  
  for(t in 1:(n_year-k)){
    mu[t] = ar + log(S[t]) - b*S[t];   
-   S[t+k] = R[t] - C[t]; // R and C are t + k NOT t
+   S[t+k] = R[t] - C[t]; //R and C are t + k NOT t
  }
 }
 model {
   // priors 
+  // note Su and Petrson use a bivariate normal for ar,b
+  // cahill tried, but confounding between ar,b buggers this 
   ar ~ normal(ar_prior[1], ar_prior[2]); 
   ln_sdp ~ normal(ln_sdp_prior[1], ln_sdp_prior[2]); 
   ln_sdo ~ normal(ln_sdo_prior[1], ln_sdo_prior[2]); 

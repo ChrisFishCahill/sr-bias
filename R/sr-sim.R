@@ -1,25 +1,31 @@
 # simulate su and peterson
 # cahill, punt, walters november 2022
+
 library(tidybayes)
 library(tidyverse)
 library(cowplot)
+library(rstan)
+library(tidybayes)
+library(cowplot)
 
+devtools::install_github("ChrisFishCahill/gg-qfc")
+library(ggqfc)
 
 k <- 2 # age at maturity
 n_year <- 60
 ar <- 1 # ln( ricker alpha)
 a <- exp(ar)
 b <- 1
-sdp <- 0.03 # process error sd
-sdo <- 0.1 # observation error sd
+sdp <- 0.05 # process error sd
+sdo <- 0.15# observation error sd
 
 E <- S <- rep(NA, n_year) # Escapement, Stock
 C <- R <- rep(NA, n_year) # Catch, Recruits
 
 # set up exploitation rate sequence
 Ut <- rep(NA, n_year)
-U <- 0.5
-relU <- seq(from = 0, to = 1, by = 0.02)
+U <- 0.25
+relU <- seq(from = 0, to = 1, by = 0.025)
 Ut[1:length(relU)] <- relU
 Ut[which(is.na(Ut))] <- 1
 Ut <- Ut * U
@@ -57,10 +63,6 @@ b
 #--------------------------------------------------------------------------
 # estimate it in stan
 #--------------------------------------------------------------------------
-library(rstan)
-library(tidyverse)
-library(tidybayes)
-
 options(mc.cores = parallel::detectCores())
 
 # eliminate redundant compilations
@@ -71,15 +73,14 @@ path <- "src/ss_ricker.stan"
 m <- rstan::stan_model(path, verbose = T)
 
 # set up the data and the initial values
-
 inits <- function() {
   list(
-    "ar" = jitter(ar),
-    "b" = jitter(b),
-    "sdo" = jitter(log(sdo)),
-    "sdp" = jitter(log(sdp)),
-    "R" = rep(jitter(1), length((k + 1):n_year)),
-    "So" = jitter(c(1, 1))
+    "ar" = ar,
+    "b" = b,
+    "So" = rep(1, k),
+    "sdo" = jitter(sdo),
+    "sdp" = jitter(sdp),
+    "R" = R[(k+1):n_year]
   )
 }
 
@@ -89,11 +90,10 @@ stan_data <-
     "n_year" = n_year,
     "E" = E,
     "C" = C[(k + 1):n_year],
-    ar_prior = c(1, 0.1),
-    b_prior = c(1, 0.1),
-    sdp_prior = 10,
-    sdo_prior = 10,
-    So_prior = c(1, 2)
+    ar_prior = c(1, 0.25),
+    So_prior = c(0, 0.2),
+    ln_sdp_prior = c(0, 1),
+    ln_sdo_prior = c(0, 1)
   )
 
 fit <-
@@ -101,15 +101,16 @@ fit <-
     m,
     data = stan_data,
     pars = c("ar", "b", "sdo", "sdp", "So", "R", "S"),
-    iter = 4000, chains = 4,
-    control = list(adapt_delta = 0.99, max_treedepth = 15)
+    iter = 5000, warmup = 2500, chains = 4, 
+    control = list(adapt_delta = 0.99)
   )
 
-# shinystan::launch_shinystan(fit)
+pairs(fit, pars = c("sdo", "sdp", "lp__", "ar", "So[1]", 
+                    "So[2]")
+      )
 
 #-------------------------------------------------------------------------------
 # plot stuff
-fit
 
 p1 <- fit %>%
   spread_draws(R[year]) %>%
@@ -166,6 +167,7 @@ p3 <- p3 + geom_point(
   shape = 16, color = "red",
   size = 2
 )
+p3
 
 p <- plot_grid(p3, p1, p2, ncol = 1)
 p
