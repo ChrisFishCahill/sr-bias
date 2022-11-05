@@ -8,29 +8,29 @@ library(rstan)
 library(tidybayes)
 library(cowplot)
 
-devtools::install_github("ChrisFishCahill/gg-qfc")
+# devtools::install_github("ChrisFishCahill/gg-qfc")
 library(ggqfc)
 
 k <- 2 # age at maturity
-n_year <- 60
+n_year <- 200 #50
 ar <- 1 # ln( ricker alpha)
 a <- exp(ar)
 b <- 1
-sdp <- 0.05 # process error sd
-sdo <- 0.15# observation error sd
+sdp <- 0.03 # process error sd
+sdo <- 0.1# observation error sd
 
 E <- S <- rep(NA, n_year) # Escapement, Stock
 C <- R <- rep(NA, n_year) # Catch, Recruits
 
 # set up exploitation rate sequence
 Ut <- rep(NA, n_year)
-U <- 0.25
+U <- .6 #0.35
 relU <- seq(from = 0, to = 1, by = 0.025)
 Ut[1:length(relU)] <- relU
 Ut[which(is.na(Ut))] <- 1
 Ut <- Ut * U
 
-set.seed(999)
+#set.seed(999)
 wt <- rnorm(n_year - k, 0, sd = sdp) # process noise
 # Initialize S, R, C
 S[1:k] <- ar / b # S' = ln(a)/b = equilibrium S
@@ -60,6 +60,9 @@ confint(lm(log(R / S) ~ S))
 ar
 b
 
+plot(S, xlab="Year")
+abline(h=0.1, lty = 3)
+
 #--------------------------------------------------------------------------
 # estimate it in stan
 #--------------------------------------------------------------------------
@@ -84,14 +87,17 @@ inits <- function() {
   )
 }
 
+# take last 30 years 
+E2 = E[(n_year-29):n_year]
+C2 = C[(n_year-27):n_year]
 stan_data <-
   list(
     "k" = k,
-    "n_year" = n_year,
-    "E" = E,
-    "C" = C[(k + 1):n_year],
+    "n_year" = length(E2),
+    "E" = E2, # E
+    "C" = C2, #C[(k + 1):n_year],
     ar_prior = c(1, 0.25),
-    So_prior = c(0, 0.2),
+    So_prior = c(0, 0.25), # 0.2
     ln_sdp_prior = c(0, 1),
     ln_sdo_prior = c(0, 1)
   )
@@ -105,9 +111,9 @@ fit <-
     control = list(adapt_delta = 0.99)
   )
 
-pairs(fit, pars = c("sdo", "sdp", "lp__", "ar", "So[1]", 
-                    "So[2]")
-      )
+# pairs(fit, pars = c("sdo", "sdp", "lp__", "ar", "So[1]", 
+#                     "So[2]")
+#       )
 
 #-------------------------------------------------------------------------------
 # plot stuff
