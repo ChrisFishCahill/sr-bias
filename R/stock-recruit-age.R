@@ -1,4 +1,3 @@
-library(TMB)
 library(tidyverse)
 library(cowplot)
 devtools::install_github("ChrisFishCahill/gg-qfc")
@@ -222,57 +221,3 @@ p
 
 ggsave("plots/reg-test.pdf", width = 7, height = 4)
 
-#-----------------------
-# TMB
-cppfile <- "src/ss_ricker.cpp"
-compile(cppfile)
-dyn.load(dynlib("src/ss_ricker"))
-vt = rnorm(n_year-1, 0, sdvt)
-
-data <- list(
-  "k" = 2, 
-  "E" = dat$s*exp(vt), # observation 
-  "C" = dat$C
-)
-
-par <- list(
-  "ar" = log(3),
-  "br" = 0.5,
-  "ln_sdo" = log(0.0001),
-  "ln_sdp" = log(sdp), 
-  "ln_R" = log(dat$r[1:(n_year-2)]),
-  "ln_So" = rep(log(dat$s[1]),2)
-  )
-
-compile(cppfile)
-dyn.load(dynlib("src/ss_ricker"))
-obj <- MakeADFun(data = data, parameters = par)
-
-obj$fn(obj$par)
-obj$gr(obj$par)
-opt <- nlminb(start = obj$par, objective = obj$fn, gradient = obj$gr, 
-              eval.max = 1000, iter.max = 500)
-
-opt <- nlminb(start = opt$par, objective = obj$fn, gradient = obj$gr, 
-              eval.max = 1000, iter.max = 500)
-
-
-report <- obj$report()
-opt$SD <- sdreport(obj)
-opt$SD
-
-reca
-a_ss[i] <- exp(unname(opt$par["log_a"]))
-b_ss[i] <- exp(unname(opt$par["log_b"]))
-
-plot(as.list(opt$SD, "Estimate")$wt)
-
-par(mfrow = c(1, 2))
-hist(a_ss,
-  main = "state space ricker", xlab = "alpha est", breaks = 30,
-  xlim = c(1, 5.5)
-)
-abline(v = reca, lwd = 2, col = "blue")
-
-hist(b_ss, main = "state space ricker", xlab = "beta est", breaks = 30)
-abline(v = recb, lwd = 2, col = "blue")

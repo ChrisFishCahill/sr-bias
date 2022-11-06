@@ -1,3 +1,8 @@
+/*
+   State-space Ricker stock-recruit model
+      based on Su and Peterson (2012)
+            Cahill QFC MSU
+ */
 data {
   int<lower=0> k;
   int<lower=0> n_year;

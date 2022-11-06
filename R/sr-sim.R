@@ -12,19 +12,19 @@ library(cowplot)
 library(ggqfc)
 
 k <- 2 # age at maturity
-n_year <- 200 #50
+n_year <- 50 #50
 ar <- 1 # ln( ricker alpha)
 a <- exp(ar)
 b <- 1
 sdp <- 0.03 # process error sd
-sdo <- 0.1# observation error sd
+sdo <- 0.15# observation error sd
 
 E <- S <- rep(NA, n_year) # Escapement, Stock
 C <- R <- rep(NA, n_year) # Catch, Recruits
 
 # set up exploitation rate sequence
 Ut <- rep(NA, n_year)
-U <- .6 #0.35
+U <- .62 #0.35
 relU <- seq(from = 0, to = 1, by = 0.025)
 Ut[1:length(relU)] <- relU
 Ut[which(is.na(Ut))] <- 1
@@ -88,14 +88,14 @@ inits <- function() {
 }
 
 # take last 30 years 
-E2 = E[(n_year-29):n_year]
-C2 = C[(n_year-27):n_year]
+# E2 = E[(n_year-99):n_year]
+# C2 = C[(n_year-97):n_year]
 stan_data <-
   list(
     "k" = k,
-    "n_year" = length(E2),
-    "E" = E2, # E
-    "C" = C2, #C[(k + 1):n_year],
+    "n_year" = length(E),
+    "E" = E, # E2
+    "C" = C[(k + 1):n_year], #C2
     ar_prior = c(1, 0.25),
     So_prior = c(0, 0.25), # 0.2
     ln_sdp_prior = c(0, 1),
