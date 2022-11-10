@@ -1,12 +1,12 @@
 # simulate su and peterson
 # cahill, punt, november 2022
 
-# objectives: 
+# objectives:
 # 1) simulate the su and peterson state space ricker model
-# 2) estimate it in Stan--complete a self test to show the model works 
-# 3) Incrementaly reduce data quality from the simulated trajectory of catches 
+# 2) estimate it in Stan--complete a self test to show the model works
+# 3) Reduce data quality from the simulated trajectory of catches
 #    to show time-series bias
-# 4) 
+# 4) visualize
 
 library(tidybayes)
 library(tidyverse)
@@ -17,31 +17,13 @@ library(cowplot)
 # devtools::install_github("ChrisFishCahill/gg-qfc")
 library(ggqfc)
 
-k <- 2 # age at maturity
-n_year <- 200 # 50
-ar <- 1 # ln( ricker alpha)
-a <- exp(ar)
-b <- 1
-sdp <- 0.05 # process error sd
-sdo <- 0.3 # observation error sd
-E <- S <- rep(NA, n_year) # Escapement, Stock
-C <- R <- rep(NA, n_year) # Catch, Recruits
-
-# set up exploitation rate sequence
-Ut <- rep(NA, n_year)
-U <- 0.6
-relU <- seq(from = 0, to = 1, by = 0.025)
-Ut[1:length(relU)] <- relU
-Ut[which(is.na(Ut))] <- 1
-Ut <- Ut * U
-
+# function to get su peterson dynamics
 sr_model <- function() {
   wt <- rnorm(n_year - k, 0, sdp) # process noise
   vt <- rnorm(n_year, 0, sdo) # observation noise
-  
+
   # Initialize S, R, C
-  S[1:k] <- ar / b # S' = ln(a)/b = equilibrium S
-  R[1:k] <- ar / b # R' = ln(a)/b = equilibrium R
+  S[1:k] <- R[1:k] <- ar / b # S' = R' = ln(a)/b = equilibrium S
   C[1:k] <- Ut[1:k] * R[1:k]
 
   # sequentially generate new recruits, catch, and spawners
@@ -51,8 +33,8 @@ sr_model <- function() {
     S[t + k] <- R[t + k] - C[t + k]
   }
 
-  E <- S * exp(vt) # add obs. noise
-  
+  E <- S * exp(vt) # add obs. noise to S to get E
+
   out <- tibble(
     "E" = E,
     "R" = R,
@@ -60,59 +42,130 @@ sr_model <- function() {
     "ln_RS" = c(
       log(R[(k + 1):n_year] / S[1:(n_year - k)]),
       rep(NA, k)
-    )
+    ),
+    "C" = C,
+    "Ut" = Ut,
+    "wt" = c(rep(NA, k), wt), 
+    "vt" = vt,
+    "year" = 1:n_year
   )
   return(out)
 }
-# plot it
-plot(log(R[(k + 1):n_year] / S[1:(n_year - k)]) ~ S[1:(n_year - k)],
-  ylab = "ln(R/S) vs. S",
-  xlab = "S"
-)
-# plot(R ~ S, "ylab" = "Recruits", xlab = "Stock")
-# plot(R ~ E, "ylab" = "Recruits", xlab = "Escapement")
 
-plot(S, xlab = "Year", type = "b")
-abline(h = 0.1, lty = 3)
+#-------------------------------------------------------------------------------
+# set up some leading parameters / values for the f(x)
+k <- 2 # age at maturity
+n_year <- 100 # 50
+ar <- b <- 1 # ln( ricker alpha), ricker b
+a <- exp(ar) 
+sdp <- 0.05 # process error sd
+sdo <- 0.3 # observation error sd
+E <- S <- rep(NA, n_year) # Escapement, Stock
+C <- R <- rep(NA, n_year) # Catch, Recruits
+
+# set up exploitation rate sequence
+Ut <- rep(NA, n_year) 
+U <- 0.6
+relU <- seq(from = 0, to = 1, by = 0.05)
+Ut[1:length(relU)] <- relU
+Ut[which(is.na(Ut))] <- 1
+Ut <- Ut * U
+
+#-------------------------------------------------------------------------------
+# call the function and make some plots 
+set.seed(3)
+dat <- sr_model()
+
+p1 <- dat %>% 
+  ggplot(aes(x = year, y = S))+
+  geom_point() + geom_line() + 
+  theme_qfc() + 
+  ylim(0,1.0) + 
+  ggtitle("True S vs. time") + 
+  geom_hline(yintercept=0.1, linetype = 2)
+
+p2 <- dat %>% 
+  ggplot(aes(x = year, y = Ut))+
+  geom_point() + geom_line() + 
+  theme_qfc() + 
+  ylab("Exploitation rate U(t)") + 
+  ggtitle("Ut vs. time")
+
+p3 <- dat %>%
+  ggplot(aes(x = S, y = ln_RS)) +
+  geom_point() +
+  ylab("ln(R/S)") +
+  xlab("S") +
+  ggtitle("True ln(R/S) vs. S relationship") +
+  theme_qfc()
+
+p4 <- dat %>%
+  ggplot(aes(x = year, y = E)) +
+  geom_point() +
+  xlab("year") +
+  ylab("Escapement") +
+  theme_qfc() + 
+  geom_hline(yintercept=0.1, linetype = 2) +
+  ggtitle("Observed Escapement vs. time")
+
+p5 <- dat %>%
+  ggplot(aes(x = year, y = wt)) +
+  geom_point() + 
+  geom_line()+
+  xlab("year") +
+  ylab("process error") +
+  theme_qfc() + 
+  ggtitle("process errors vs. time")
+
+p6 <- dat %>%
+  ggplot(aes(x = year, y = vt)) +
+  geom_point() + 
+  geom_line()+
+  xlab("year") +
+  ylab("obs error") +
+  theme_qfc() + 
+  ggtitle("obs errors vs. time")
+
+p <- plot_grid(p1, p2, p3, p4, p5, p6, ncol = 3)
+p
 
 #--------------------------------------------------------------------------
 # estimate it in stan
 #--------------------------------------------------------------------------
 options(mc.cores = parallel::detectCores())
-
-# eliminate redundant compilations
 rstan::rstan_options(auto_write = TRUE)
 
 # compile the stan model
 path <- "src/ss_ricker.stan"
 m <- rstan::stan_model(path, verbose = T)
 
-# set up the data and the initial values
+set.seed(3)
+dat <- sr_model()
+
+# take last n years to illustrate the time series bias
+n <- n_year
+E <- dat$E[(n_year - (n - 1)):n_year]
+C <- dat$C[(n_year - (n - 3)):n_year]
+
 inits <- function() {
   list(
     "ar" = ar,
-    "ln_So" = rep(log(S[1], k)),
+    "ln_So" = rep(log(dat$S[1], k)),
     "sdo" = sdo,
     "sdp" = sdp,
-    "R" = R[(k + 1):n_year]
+    "R" = dat$R[(k + 1):n_year]
   )
 }
-
-# take last n years
-n <- n_year
-n <- 50
-E2 <- E[(n_year - (n - 1)):n_year]
-C2 <- C[(n_year - (n - 3)):n_year]
 
 stan_data <-
   list(
     "k" = k,
-    "n_year" = length(E2),
-    "E" = E2,
-    "C" = C2,
+    "n_year" = length(E),
+    "E" = E,
+    "C" = C,
     ar_prior = c(ar, 0.2),
-    ln_sdp_prior = c(log(sdp), 1),
-    ln_sdo_prior = c(log(sdo), 1)
+    ln_sdp_prior = c(log(sdp), 0.15),
+    ln_sdo_prior = c(log(sdo), 0.15)
   )
 
 fit <-
@@ -121,21 +174,130 @@ fit <-
     data = stan_data,
     init = inits,
     pars = c("ar", "b", "sdo", "sdp", "R", "S"),
-    iter = 3000, warmup = 1500, chains = 1
+    iter = 5000, warmup = 2500, chains = 1
   )
 
-pairs(fit, pars = c("sdo", "sdp", "lp__", "ar", "b"))
-years <- 1:n_year
+fit 
+# res = fit %>% spread_draws(ar, b, sdo, sdp) %>%
+#   summarise_draws()
 
-plot(S ~ years, type = "b", xlab = "year of simulation", col = "black")
-years2 <- 170:n_year
-points(S[170:n_year] ~ years2, col = "blue", pch = 16)
-pairs(fit, pars = c("ar", "b"))
-
-
-# f <- optimizing(m, data = stan_data, hessian = F)
 #-------------------------------------------------------------------------------
-# plot stuff
+# function to call stan fits -- now simulate/estimate many times 
+
+get_fit <- function(sim = NA) {
+
+  sim_dat <- sr_model() # draw a single time series from 1:n_year 
+  
+  # ---------------------------------------
+  # fit to all years from simulation 
+  # ---------------------------------------
+  n <- n_year
+  E <- sim_dat$E[(n_year - (n - 1)):n_year]
+  C <- sim_dat$C[(n_year - (n - 3)):n_year]
+  
+  inits <- function() {
+    list(
+      "ar" = ar,
+      "ln_So" = rep(log(sim_dat$S[1], k)),
+      "sdo" = sdo,
+      "sdp" = sdp,
+      "R" = sim_dat$R[(k + 1):n_year]
+    )
+  }
+  
+  stan_data <-
+    list(
+      "k" = k,
+      "n_year" = length(E),
+      "E" = E,
+      "C" = C,
+      ar_prior = c(ar, 0.2),
+      ln_sdp_prior = c(log(sdp), 0.15),
+      ln_sdo_prior = c(log(sdo), 0.15)
+    )
+  
+  fit <-
+    rstan::sampling(
+      m,
+      data = stan_data,
+      init = inits,
+      pars = c("ar", "b", "sdo", "sdp"),
+      iter = 5000, warmup = 2500, chains = 1, 
+      control = list(adapt_delta = 0.99, max_treedepth = 13)
+    )
+  
+  res = fit %>% spread_draws(ar, b, sdo, sdp) %>%
+    summarise_draws()
+  
+  res = res %>% add_column(sim = sim, n_year = n_year)
+  # ---------------------------------------
+  # take last n years to illustrate ts bias
+  # ---------------------------------------
+  n <- 50
+  E <- sim_dat$E[(n_year - (n - 1)):n_year]
+  C <- sim_dat$C[(n_year - (n - 3)):n_year]
+  
+  inits <- function() {
+    list(
+      "ar" = ar,
+      "ln_So" = rep(log(sim_dat$S[1], k)),
+      "sdo" = sdo,
+      "sdp" = sdp,
+      "R" = sim_dat$R[(k + 1):n_year]
+    )
+  }
+  
+  stan_data <-
+    list(
+      "k" = k,
+      "n_year" = length(E),
+      "E" = E,
+      "C" = C,
+      ar_prior = c(ar, 0.2),
+      ln_sdp_prior = c(log(sdp), 0.15),
+      ln_sdo_prior = c(log(sdo), 0.15)
+    )
+  
+  fit <-
+    rstan::sampling(
+      m,
+      data = stan_data,
+      init = inits,
+      pars = c("ar", "b", "sdo", "sdp"),
+      iter = 5000, warmup = 2500, chains = 1, 
+      control = list(adapt_delta = 0.99, max_treedepth = 13)
+    )
+  
+  res2 = fit %>% spread_draws(ar, b, sdo, sdp) %>%
+    summarise_draws()
+  res2 = res2 %>% add_column(sim = sim, n_year = 50)
+  res = bind_rows(res, res2)
+  res
+}
+
+#  testing
+# set.seed(1)
+# out = get_fit(sim = 1)
+# out = pivot_longer(out, variable)
+# system.time(
+#   out <- purrr::pmap_dfr(to_sim, get_fit)
+# )
+
+to_sim <- tibble(sim = seq_len(100))
+
+future::plan(multisession)
+system.time({
+  out <- future_pmap_dfr(to_sim, get_fit,
+                     .options = furrr_options(seed = TRUE),
+                     .progress = TRUE
+  )
+})
+
+
+
+
+#-------------------------------------------------------------------------------
+# even more plotting
 
 p1 <- fit %>%
   spread_draws(R[year]) %>%

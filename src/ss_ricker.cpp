@@ -25,7 +25,6 @@ Type objective_function<Type>::operator() ()
   int n_year = E.size();                                  // total number of years
 
   PARAMETER(ar);                                          // ln(a)
-  PARAMETER(b);                                           // ln(b)
   PARAMETER(ln_sdo);                                      // observation error
   PARAMETER(ln_sdp);                                      // process error
   PARAMETER_VECTOR(R);                                    // recruits from (k+1):n_year
@@ -40,7 +39,8 @@ Type objective_function<Type>::operator() ()
   Type arec = exp(ar);    
 
   // initialize 
-  for(int t = 0; t < k; t ++){ S(t) = exp(ln_So(t));}    
+  for(int t = 0; t < k; t ++){ S(t) = exp(ln_So(0));} 
+  Type b = ar / S(0); // initial state is b = ln(a) / So
   
   Type jnll = 0;
   
@@ -60,7 +60,8 @@ Type objective_function<Type>::operator() ()
   REPORT(E); 
   REPORT(sdp); 
   REPORT(sdo); 
-  REPORT(arec); 
+  REPORT(arec);
+  REPORT(b); 
 
   return jnll;
 }
