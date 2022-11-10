@@ -1,9 +1,8 @@
+# cahill, walters november 2022
 library(tidyverse)
 library(cowplot)
 devtools::install_github("ChrisFishCahill/gg-qfc")
 library(ggqfc)
-
-# TODO: set up Req yet for Umsy + reference point calcs
 
 # set leading parameters
 Linf <- 1
@@ -15,7 +14,7 @@ ahv <- 3
 sdv <- 0.7
 Sad <- 0.8
 Fmort <- 0.35
-U <- 0.1
+U <- 0.33
 Ma <- -log(Sad)
 ages <- 1:15
 n_year <- 100
@@ -32,6 +31,11 @@ fa <- wa - alw * lmat^blw
 fa[which(fa < 0)] <- 0
 vul <- 1 / (1 + exp(-1.7 * (ages - ahv) / sdv))
 Snat <- Sad * (1 - exp(-1.5 * (ages - 0.8)))
+
+Bpro = sum(wa*vul*Surv0)     # vul bio per recruit unfished
+Bo = Ro*Bpro*exp(0.5*sdwt^2) # vul bio unfished
+
+
 # NOTE:
 # just picked some reasonable values for the 1.7, 1.5 and 0.8
 # but could be whatever
@@ -90,9 +94,10 @@ run_model <- function() {
     }
   }
   # true values
-  r <- nta[2:n_year, 1] # r from 2:n_year; recby in carl's code
-  e <- eggs[1:(n_year - 1)] # eggs from 1:(n_year-1)
-  ln_rs <- log(r / e) # true relationship
+  e <- eggs[1:(n_year - 1)] 
+  r <- nta[2:n_year, 1] 
+  ln_rs <- log(r / e) # note stagger in index
+  Dbar <- mean(vulb[(n_year - (n_sim - 1)):n_year]) / Bo # depletion
 
   # generate observed values
   # vt <- rnorm(length(e), sdvt) # iid sampling errors
@@ -101,7 +106,7 @@ run_model <- function() {
 
   out <- tibble(
     # "true" stuff
-    s = e, r = r, ln_rs = ln_rs,
+    S = e, R = r, ln_RS = ln_rs,
     yield = yield[1:(n_year - 1)],
     Ut = Ut[1:n_year - 1],
     vulb = vulb[1:(n_year - 1)], reca = rep(reca, n_year - 1),
@@ -110,6 +115,7 @@ run_model <- function() {
     sdc = rep(sdc, (n_year - 1)), sdwt = rep(sdwt, (n_year - 1)),
     sdvt = rep(sdvt, (n_year - 1)),
     rhor = rep(rhor, (n_year - 1)),
+    Dbar = rep(Dbar, (n_year - 1)),
     # vt = vt,
     wt = rdev,
     year = 1:(n_year - 1),
@@ -123,6 +129,7 @@ run_model <- function() {
 
 # call the sim f(x) once to visualize
 set.seed(3)
+n_sim = 30
 dat <- run_model()
 
 p1 <- dat %>% ggplot(aes(x = year, y = yield)) +
@@ -143,7 +150,7 @@ p2 <- dat %>% ggplot(aes(x = year, y = vulb)) +
   ) +
   theme(plot.title = element_text(hjust = 0.5))
 
-p3 <- dat %>% ggplot(aes(x = s, y = ln_rs)) +
+p3 <- dat %>% ggplot(aes(x = S, y = ln_RS)) +
   geom_point() +
   ylab("ln(r/s)") +
   ggtitle("ln(r/s) vs. s true") +
