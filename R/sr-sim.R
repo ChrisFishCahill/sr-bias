@@ -6,10 +6,10 @@
 # 1) simulate the su and peterson state space ricker model
 # 2) estimate it in Stan--complete a self test to show the model works
 # 3) Reduce data quality from the simulated trajectory of catches
-#    to show time-series bias
+#    to show time-series bias of Walters 1985
 # 4) visualize
 #-------------------------------------------------------------------------------
-# packages 
+# packages
 #-------------------------------------------------------------------------------
 library(tidybayes)
 library(tidyverse)
