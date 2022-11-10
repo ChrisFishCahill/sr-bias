@@ -19,6 +19,8 @@ library(tidybayes)
 library(cowplot)
 # devtools::install_github("ChrisFishCahill/gg-qfc")
 library(ggqfc)
+library(future)
+library(furrr)
 
 #-------------------------------------------------------------------------------
 # function to get su peterson dynamics
@@ -29,7 +31,7 @@ sr_model <- function() {
   vt <- rnorm(n_year, 0, sdo) # observation noise
 
   # Initialize S, R, C
-  S[1:k] <- R[1:k] <- ar / b # S' = R' = ln(a)/b = equilibrium S
+  S[1:k] <- R[1:k] <- ar / b # S' = R' = ln(a)/b = equilibrium S and R
   C[1:k] <- Ut[1:k] * R[1:k]
 
   # sequentially generate new recruits, catch, and spawners
@@ -232,10 +234,10 @@ get_fit <- function(sim = NA) {
 
 #  testing/debugging
 # set.seed(1)
-out = get_fit(sim = 1)
+# out = get_fit(sim = 1)
 # out = pivot_longer(out, variable)
 # system.time(
-out <- purrr::pmap_dfr(to_sim, get_fit)
+# out <- purrr::pmap_dfr(to_sim, get_fit)
 # )
 
 to_sim <- tibble(sim = seq_len(100))
