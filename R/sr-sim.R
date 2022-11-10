@@ -63,7 +63,7 @@ sr_model <- function() {
 #-------------------------------------------------------------------------------
 
 k <- 2 # age at maturity
-n_year <- 100 # 50
+n_year <- 100 
 ar <- b <- 1 # ln( ricker alpha), ricker b
 a <- exp(ar)
 sdp <- 0.05 # process error sd
@@ -127,13 +127,13 @@ fit <-
     data = stan_data,
     init = inits,
     pars = c("ar", "b", "sdo", "sdp", "R", "S"),
-    iter = 5000, warmup = 2500, chains = 1
+    iter = 5000, warmup = 2500, chains = 4
   )
 
 fit
 # res = fit %>% spread_draws(ar, b, sdo, sdp) %>%
 #   summarise_draws()
-
+# shinystan::launch_shinystan(fit)
 #-------------------------------------------------------------------------------
 # now simulate/estimate many times
 #-------------------------------------------------------------------------------
@@ -232,10 +232,10 @@ get_fit <- function(sim = NA) {
 
 #  testing/debugging
 # set.seed(1)
-# out = get_fit(sim = 1)
+out = get_fit(sim = 1)
 # out = pivot_longer(out, variable)
 # system.time(
-#   out <- purrr::pmap_dfr(to_sim, get_fit)
+out <- purrr::pmap_dfr(to_sim, get_fit)
 # )
 
 to_sim <- tibble(sim = seq_len(100))
@@ -450,7 +450,7 @@ p6
 
 p <- plot_grid(p6, p5, p4, ncol = 1)
 
-ggsave("plots/ts-bias-demonstration-one-fit.pdf", width = 8, height = 11)
+ggsave("plots/ts-bias-one-fit.pdf", width = 8, height = 11)
 
 #-------------------------------------------------------------------------------
 # even more plotting
