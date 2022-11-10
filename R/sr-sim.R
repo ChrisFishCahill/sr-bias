@@ -143,7 +143,7 @@ set.seed(3)
 dat <- sr_model()
 
 # take last n years to illustrate the time series bias
-n <- n_year
+n <- 50
 E <- dat$E[(n_year - (n - 1)):n_year]
 C <- dat$C[(n_year - (n - 3)):n_year]
 
@@ -275,7 +275,7 @@ get_fit <- function(sim = NA) {
   res
 }
 
-#  testing
+#  testing/debugging
 # set.seed(1)
 # out = get_fit(sim = 1)
 # out = pivot_longer(out, variable)
@@ -286,78 +286,137 @@ get_fit <- function(sim = NA) {
 to_sim <- tibble(sim = seq_len(100))
 
 future::plan(multisession)
+
 system.time({
   out <- future_pmap_dfr(to_sim, get_fit,
                      .options = furrr_options(seed = TRUE),
                      .progress = TRUE
   )
 })
+out = out %>% pivot_longer(variable)
 
+#-------------------------------------------------------------------------------
+# plot the output from simulation 
 
+ap <- out %>%
+  filter(value == "ar") %>%
+  ggplot(aes(y = median, x = as.factor(n_year))) + 
+  geom_violin(width=0.75) +
+  geom_jitter(width = 0.12, alpha = 0.5) + 
+  geom_hline(yintercept = c(ar), lty = 2, color = "steelblue", lwd = 2) + 
+  ggtitle(expression(ln~alpha)) + 
+  ylab("Posterior median estimates") + 
+  xlab("Low or high data quality (final 50 or all 100 yrs of sim)") + 
+  theme_qfc() + 
+  stat_summary(fun=median, geom="point", size=3, col = "darkorange3")
+ap  
 
+bp <- out %>%
+  filter(value == "b") %>%
+  ggplot(aes(y = median, x = as.factor(n_year))) + 
+  geom_violin(width=1.5) +
+  geom_jitter(width = 0.05, alpha = 0.5) + 
+  geom_hline(yintercept = b, lty = 2, color = "steelblue", lwd = 2) + 
+  ggtitle(expression(beta)) + 
+  ylab("Posterior median estimates") + 
+  xlab("Low or high data quality (final 50 or all 100 yrs of sim)") + 
+  theme_qfc() + 
+  stat_summary(fun=median, geom="point", size=3, col = "darkorange3")
+bp  
+
+sigo <- out %>%
+  filter(value == "sdo") %>%
+  ggplot(aes(y = median, x = as.factor(n_year))) + 
+  geom_violin(width=0.12) +
+  geom_jitter(width = 0.05, alpha = 0.5) + 
+  geom_hline(yintercept = sdo, lty = 2, color = "steelblue", lwd = 2) + 
+  ggtitle(expression(sigma[observation])) + 
+  ylab("Posterior median estimates") + 
+  xlab("Low or high data quality (final 50 or all 100 yrs of sim)") + 
+  theme_qfc() + 
+  stat_summary(fun=median, geom="point", size=3, col = "darkorange3")
+sigo  
+
+sigp <- out %>%
+  filter(value == "sdp") %>%
+  ggplot(aes(y = median, x = as.factor(n_year))) + 
+  geom_violin(width=0.12) +
+  geom_jitter(width = 0.05, alpha = 0.5) + 
+  geom_hline(yintercept = sdp, lty = 2, color = "steelblue", lwd = 2) + 
+  ggtitle(expression(sigma[process])) + 
+  ylab("Posterior median estimates") + 
+  xlab("Low or high data quality (final 50 or all 100 yrs of sim)") + 
+  theme_qfc() + 
+  stat_summary(fun=median, geom="point", size=3, col = "darkorange3")
+sigp  
+
+p <- plot_grid(ap, bp, sigo, sigp, ncol = 2)
+p
+
+ggsave("plots/ts-bias-demonstration.pdf", width = 11, height = 8)
 
 #-------------------------------------------------------------------------------
 # even more plotting
-
-p1 <- fit %>%
-  spread_draws(R[year]) %>%
-  median_qi() %>%
-  ggplot(aes(x = year, y = R, ymin = .lower, ymax = .upper)) +
-  geom_pointinterval()
-p1
-dat <- data.frame(year = 1:(n - k), Rtrue = R[(n_year - (n - (k + 1))):n_year])
-p1 <- p1 + geom_point(
-  data = dat, aes(
-    x = year, y = Rtrue, ymin = Rtrue,
-    ymax = Rtrue
-  ), shape = 16, color = "red",
-  size = 2
-) +
-  ggqfc::theme_qfc()
-
-p1
-
-p2 <- fit %>%
-  spread_draws(S[year]) %>%
-  median_qi() %>%
-  ggplot(aes(x = year, y = S, ymin = .lower, ymax = .upper)) +
-  geom_pointinterval()
-p2
-dat <- data.frame(year = 1:n, Strue = S[(n_year - (n - 1)):n_year])
-p2 <- p2 + geom_point(
-  data = dat, aes(
-    x = year, y = Strue, ymin = Strue,
-    ymax = Strue
-  ), shape = 16, color = "red",
-  size = 2
-) +
-  ggqfc::theme_qfc()
-p2
-
-p3 <- fit %>%
-  gather_draws(ar, b, sdp, sdo) %>%
-  median_qi() %>%
-  ggplot(aes(x = .variable, ymin = .lower, ymax = .upper, y = .value)) +
-  geom_pointinterval() +
-  xlab("Parameter") +
-  ylab("Value") +
-  ggqfc::theme_qfc()
-dat <- data.frame(
-  .variable = c("ar", "b", "sdo", "sdp"),
-  .value = c(ar, b, sdo, sdp)
-)
-p3 <- p3 + geom_point(
-  data = dat, aes(
-    x = .variable, y = .value, ymin = .value,
-    ymax = .value
-  ),
-  shape = 16, color = "red",
-  size = 2
-)
-p3
-
-p <- plot_grid(p3, p1, p2, ncol = 1)
-p
+# 
+# p1 <- fit %>%
+#   spread_draws(R[year]) %>%
+#   median_qi() %>%
+#   ggplot(aes(x = year, y = R, ymin = .lower, ymax = .upper)) +
+#   geom_pointinterval()
+# p1
+# dat <- data.frame(year = 1:(n - k), Rtrue = R[(n_year - (n - (k + 1))):n_year])
+# p1 <- p1 + geom_point(
+#   data = dat, aes(
+#     x = year, y = Rtrue, ymin = Rtrue,
+#     ymax = Rtrue
+#   ), shape = 16, color = "red",
+#   size = 2
+# ) +
+#   ggqfc::theme_qfc()
+# 
+# p1
+# 
+# p2 <- fit %>%
+#   spread_draws(S[year]) %>%
+#   median_qi() %>%
+#   ggplot(aes(x = year, y = S, ymin = .lower, ymax = .upper)) +
+#   geom_pointinterval()
+# p2
+# dat <- data.frame(year = 1:n, Strue = S[(n_year - (n - 1)):n_year])
+# p2 <- p2 + geom_point(
+#   data = dat, aes(
+#     x = year, y = Strue, ymin = Strue,
+#     ymax = Strue
+#   ), shape = 16, color = "red",
+#   size = 2
+# ) +
+#   ggqfc::theme_qfc()
+# p2
+# 
+# p3 <- fit %>%
+#   gather_draws(ar, b, sdp, sdo) %>%
+#   median_qi() %>%
+#   ggplot(aes(x = .variable, ymin = .lower, ymax = .upper, y = .value)) +
+#   geom_pointinterval() +
+#   xlab("Parameter") +
+#   ylab("Value") +
+#   ggqfc::theme_qfc()
+# dat <- data.frame(
+#   .variable = c("ar", "b", "sdo", "sdp"),
+#   .value = c(ar, b, sdo, sdp)
+# )
+# p3 <- p3 + geom_point(
+#   data = dat, aes(
+#     x = .variable, y = .value, ymin = .value,
+#     ymax = .value
+#   ),
+#   shape = 16, color = "red",
+#   size = 2
+# )
+# p3
+# 
+# p <- plot_grid(p3, p1, p2, ncol = 1)
+# p
 # ggsave("plots/self-test-su-peterson.pdf", width = 8, height = 11)
 
 # create a few posteriors for stock-recruit, i.e., ln(R/S) vs. S
@@ -388,7 +447,7 @@ p4 <- dat %>%
   median_qi() %>%
   ggplot(aes(x = S, y = ln_RS, ymin = ln_RS.lower, ymax = ln_RS.upper)) +
   geom_pointinterval(alpha = 0.25) +
-  ylab(expression(Ln ~ frac(R, S))) +
+  ylab("ln(R/S)") +
   ggqfc::theme_qfc()
 
 p4 <- p4 + geom_abline(
@@ -397,16 +456,45 @@ p4 <- p4 + geom_abline(
 )
 
 p4 <- p4 + geom_abline(
-  intercept = ar_est, slope = -b_est, color = "white",
+  intercept = ar_est, slope = -b_est, color = "black",
   linetype = 2, size = 1.5
 )
 
 p4 <- p4 + geom_abline(
-  intercept = ar, slope = -b, color = "red",
-  linetype = 1, size = 1.5
+  intercept = ar, slope = -b, color = "steelblue",
+  linetype = 2, size = 2
 )
 
-p4
+p4 <- p4 + ggtitle("Estimated (black/gray) ln(R/S) vs. S  vs. true relationship (blue)")
+
+set.seed(3)
+dat2 <- sr_model()
+dat2$color = c(rep("not included", n_year / 2), rep("included", n_year/2))
+p5 <- dat2 %>%
+  ggplot(aes(x = S, y = ln_RS, color = color)) +
+  geom_point() +
+  scale_color_manual(values = c("black", "steelblue")) +
+  ylab("ln(R/S)") +
+  xlab("S") +
+  ggtitle("True ln(R/S) vs. S relationship") +
+  theme_qfc()
+p5
+
+p6 <- dat2 %>%
+  ggplot(aes(y = S, x = year, color = color)) +
+  geom_point() +
+  geom_line() + 
+  scale_color_manual(values = c("black", "steelblue")) +
+  ylab("Stock Size (S)") +
+  xlab("Year") +
+  ggtitle("Visualizing what the assessment can and cannot 'see' in time series bias scenario") +
+  theme_qfc()
+p6
+
+p <- plot_grid(p6, p5, p4, ncol = 1)
+
+ggsave("plots/ts-bias-demonstration-one-fit.pdf", width = 8, height = 11)
+
 
 #---------------------------------------------------------------------------
 # Not yet workng:
