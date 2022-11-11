@@ -79,7 +79,7 @@ C <- R <- rep(NA, n_year) # Catch, Recruits
 
 # set up exploitation rate sequence
 Ut <- rep(NA, n_year)
-U <- 0.65
+U <- 0.05
 relU <- seq(from = 0, to = 1, by = 0.05)
 Ut[1:length(relU)] <- relU
 Ut[which(is.na(Ut))] <- 1
@@ -254,8 +254,8 @@ get_fit <- function(sim = NA, U = NA) {
 # )
 
 # exploitation rate maximums to simulate across
-U = seq(from = 0, to = 0.65, length.out = 5)
-sim = seq_len(1) 
+U = seq(from = 0.05, to = 0.65, length.out = 5)
+sim = seq_len(10) 
 to_sim <- expand.grid(sim = sim, U=U)
 
 future::plan(multisession)
