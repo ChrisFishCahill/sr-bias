@@ -69,6 +69,8 @@ sr_model <- function() {
 k <- 2 # age at maturity
 n_year <- 100 
 ar <- b <- 1 # ln( ricker alpha), ricker b
+hmsy <- 0.5*ar - 0.07*(ar^2) # su and peterson relationships
+smsy <- hmsy/b               # su and peterson relationships
 a <- exp(ar)
 sdp <- 0.05 # process error sd
 sdo <- 0.3 # observation error sd
@@ -77,7 +79,7 @@ C <- R <- rep(NA, n_year) # Catch, Recruits
 
 # set up exploitation rate sequence
 Ut <- rep(NA, n_year)
-U <- 0.6
+U <- 0.65
 relU <- seq(from = 0, to = 1, by = 0.05)
 Ut[1:length(relU)] <- relU
 Ut[which(is.na(Ut))] <- 1
@@ -131,7 +133,7 @@ fit <-
     m,
     data = stan_data,
     init = inits,
-    pars = c("ar", "b", "sdo", "sdp", "R", "S"),
+    pars = c("ar", "b", "sdo", "sdp", "smsy", "hmsy", "R", "S"),
     iter = 5000, warmup = 2500, chains = 4
   )
 
@@ -144,7 +146,14 @@ fit
 # now simulate/estimate many times
 #-------------------------------------------------------------------------------
 
-get_fit <- function(sim = NA) {
+get_fit <- function(sim = NA, U = NA) {
+  # set up exploitation rate sequence
+  Ut <- rep(NA, n_year)
+  relU <- seq(from = 0, to = 1, by = 0.05)
+  Ut[1:length(relU)] <- relU
+  Ut[which(is.na(Ut))] <- 1
+  Ut <- Ut * U
+  
   sim_dat <- sr_model() # draw a single time series from 1:n_year
 
   # ---------------------------------------
@@ -180,20 +189,20 @@ get_fit <- function(sim = NA) {
       m,
       data = stan_data,
       init = inits,
-      pars = c("ar", "b", "sdo", "sdp"),
+      pars = c("ar", "b", "sdo", "sdp", "smsy", "hmsy"),
       iter = 5000, warmup = 2500, chains = 1,
       control = list(adapt_delta = 0.99, max_treedepth = 13)
     )
 
   res <- fit %>%
-    spread_draws(ar, b, sdo, sdp) %>%
+    spread_draws(ar, b, sdo, sdp, smsy, hmsy) %>%
     summarise_draws()
 
-  res <- res %>% add_column(sim = sim, n_year = n_year)
+  res <- res %>% add_column(sim = sim, U = U, n_year = n_year)
   # ---------------------------------------
   # take last n years to illustrate ts bias
   # ---------------------------------------
-  n <- 50
+  n <- n_year - 50
   E <- sim_dat$E[(n_year - (n - 1)):n_year]
   C <- sim_dat$C[(n_year - (n - 3)):n_year]
 
@@ -223,15 +232,15 @@ get_fit <- function(sim = NA) {
       m,
       data = stan_data,
       init = inits,
-      pars = c("ar", "b", "sdo", "sdp"),
+      pars = c("ar", "b", "sdo", "sdp", "smsy", "hmsy"),
       iter = 5000, warmup = 2500, chains = 1,
       control = list(adapt_delta = 0.99, max_treedepth = 13)
     )
 
   res2 <- fit %>%
-    spread_draws(ar, b, sdo, sdp) %>%
+    spread_draws(ar, b, sdo, sdp, smsy, hmsy) %>%
     summarise_draws()
-  res2 <- res2 %>% add_column(sim = sim, n_year = 50)
+  res2 <- res2 %>% add_column(sim = sim, U = U, n_year = 50)
   res <- bind_rows(res, res2)
   res
 }
@@ -244,7 +253,10 @@ get_fit <- function(sim = NA) {
 # out <- purrr::pmap_dfr(to_sim, get_fit)
 # )
 
-to_sim <- tibble(sim = seq_len(100))
+# exploitation rate maximums to simulate across
+U = seq(from = 0, to = 0.65, length.out = 5)
+sim = seq_len(1) 
+to_sim <- expand.grid(sim = sim, U=U)
 
 future::plan(multisession)
 
@@ -270,7 +282,7 @@ ap <- out %>%
   geom_hline(yintercept = c(ar), lty = 2, color = "steelblue", lwd = 2) +
   ggtitle(expression(ln ~ alpha)) +
   ylab("Posterior median estimates") +
-  xlab("Low or high data quality (final 50 or all 100 yrs of sim)") +
+  xlab("Years of data") +
   theme_qfc() +
   stat_summary(fun = median, geom = "point", size = 3, col = "darkorange3")
 ap
@@ -283,7 +295,7 @@ bp <- out %>%
   geom_hline(yintercept = b, lty = 2, color = "steelblue", lwd = 2) +
   ggtitle(expression(beta)) +
   ylab("Posterior median estimates") +
-  xlab("Low or high data quality (final 50 or all 100 yrs of sim)") +
+  xlab("Years of data") +
   theme_qfc() +
   stat_summary(fun = median, geom = "point", size = 3, col = "darkorange3")
 bp
@@ -296,7 +308,7 @@ sigo <- out %>%
   geom_hline(yintercept = sdo, lty = 2, color = "steelblue", lwd = 2) +
   ggtitle(expression(sigma[observation])) +
   ylab("Posterior median estimates") +
-  xlab("Low or high data quality (final 50 or all 100 yrs of sim)") +
+  xlab("Years of data") +
   theme_qfc() +
   stat_summary(fun = median, geom = "point", size = 3, col = "darkorange3")
 sigo
@@ -309,12 +321,40 @@ sigp <- out %>%
   geom_hline(yintercept = sdp, lty = 2, color = "steelblue", lwd = 2) +
   ggtitle(expression(sigma[process])) +
   ylab("Posterior median estimates") +
-  xlab("Low or high data quality (final 50 or all 100 yrs of sim)") +
+  xlab("Years of data") +
   theme_qfc() +
   stat_summary(fun = median, geom = "point", size = 3, col = "darkorange3")
 sigp
 
-p <- plot_grid(ap, bp, sigo, sigp, ncol = 2)
+s_msy <- out %>%
+  filter(value == "smsy") %>%
+  filter(median < 1e3) %>%
+  ggplot(aes(y = median, x = as.factor(n_year))) +
+  geom_violin(width = 0.12) +
+  geom_jitter(width = 0.05, alpha = 0.5) +
+  geom_hline(yintercept = sdp, lty = 2, color = "steelblue", lwd = 2) +
+  ggtitle(expression(S[MSY])) +
+  ylab("Posterior median estimates") +
+  xlab("Years of data") +
+  theme_qfc() +
+  stat_summary(fun = median, geom = "point", size = 3, col = "darkorange3")
+s_msy
+
+h_msy <- out %>%
+  filter(value == "hmsy") %>%
+  filter(median < 1e3) %>%
+  ggplot(aes(y = median, x = as.factor(n_year))) +
+  geom_violin(width = 0.12) +
+  geom_jitter(width = 0.05, alpha = 0.5) +
+  geom_hline(yintercept = hmsy, lty = 2, color = "steelblue", lwd = 2) +
+  ggtitle(expression(h[MSY])) +
+  ylab("Posterior median estimates") +
+  xlab("Years of data") +
+  theme_qfc() +
+  stat_summary(fun = median, geom = "point", size = 3, col = "darkorange3")
+h_msy
+
+p <- plot_grid(ap, bp, s_msy, sigo, sigp, h_msy,  ncol = 3)
 p
 
 ggsave("plots/ts-bias-demonstration.pdf", width = 11, height = 8)
