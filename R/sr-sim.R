@@ -28,7 +28,7 @@ library(furrr)
 # function to get su peterson dynamics
 #-------------------------------------------------------------------------------
 
-sr_model <- function() {
+sr_model <- function(Ut = NA) {
   wt <- rnorm(n_year - k, 0, sdp) # process noise
   vt <- rnorm(n_year, 0, sdo) # observation noise
 
@@ -67,10 +67,10 @@ sr_model <- function() {
 #-------------------------------------------------------------------------------
 
 k <- 2 # age at maturity
-n_year <- 100 
+n_year <- 100
 ar <- b <- 1 # ln( ricker alpha), ricker b
-hmsy <- 0.5*ar - 0.07*(ar^2) # su and peterson relationships
-smsy <- hmsy/b               # su and peterson relationships
+hmsy <- 0.5 * ar - 0.07 * (ar^2) # su and peterson relationships
+smsy <- hmsy / b # su and peterson relationships
 a <- exp(ar)
 sdp <- 0.05 # process error sd
 sdo <- 0.3 # observation error sd
@@ -79,7 +79,7 @@ C <- R <- rep(NA, n_year) # Catch, Recruits
 
 # set up exploitation rate sequence
 Ut <- rep(NA, n_year)
-U <- 0.05
+U <- 0.63
 relU <- seq(from = 0, to = 1, by = 0.05)
 Ut[1:length(relU)] <- relU
 Ut[which(is.na(Ut))] <- 1
@@ -89,8 +89,8 @@ Ut <- Ut * U
 # call the f(x) and estimate it once in stan
 #-------------------------------------------------------------------------------
 
-set.seed(3)
-dat <- sr_model()
+# set.seed(3)
+# dat <- sr_model()
 
 options(mc.cores = parallel::detectCores())
 rstan::rstan_options(auto_write = TRUE)
@@ -100,7 +100,7 @@ path <- "src/ss_ricker.stan"
 m <- rstan::stan_model(path, verbose = T)
 
 set.seed(3)
-dat <- sr_model()
+dat <- sr_model(Ut = Ut)
 
 # take last n years to illustrate the time series bias
 n <- 50
@@ -123,7 +123,7 @@ stan_data <-
     "n_year" = length(E),
     "E" = E,
     "C" = C,
-    ar_prior = c(ar, 0.2),
+    ar_prior = c(ar, 0.5),
     ln_sdp_prior = c(log(sdp), 0.15),
     ln_sdo_prior = c(log(sdo), 0.15)
   )
@@ -134,10 +134,12 @@ fit <-
     data = stan_data,
     init = inits,
     pars = c("ar", "b", "sdo", "sdp", "smsy", "hmsy", "R", "S"),
-    iter = 5000, warmup = 2500, chains = 4
+    iter = 5000, warmup = 2500, chains = 1,
+    control = list(adapt_delta = 0.999, max_treedepth = 13)
   )
-
+pairs(fit, pars = c("ar", "b", "sdo", "sdp"))
 fit
+
 # res = fit %>% spread_draws(ar, b, sdo, sdp) %>%
 #   summarise_draws()
 # shinystan::launch_shinystan(fit)
@@ -153,8 +155,8 @@ get_fit <- function(sim = NA, U = NA) {
   Ut[1:length(relU)] <- relU
   Ut[which(is.na(Ut))] <- 1
   Ut <- Ut * U
-  
-  sim_dat <- sr_model() # draw a single time series from 1:n_year
+
+  sim_dat <- sr_model(Ut = Ut) # draw a single time series from 1:n_year
 
   # ---------------------------------------
   # fit to all years from simulation
@@ -191,14 +193,15 @@ get_fit <- function(sim = NA, U = NA) {
       init = inits,
       pars = c("ar", "b", "sdo", "sdp", "smsy", "hmsy"),
       iter = 5000, warmup = 2500, chains = 1,
-      control = list(adapt_delta = 0.99, max_treedepth = 13)
+      control = list(adapt_delta = 0.999, max_treedepth = 13)
     )
-
+  sampler_params <- get_sampler_params(fit, inc_warmup = FALSE)
+  divergent <- sapply(sampler_params, function(x) max(x[, "divergent__"]))
   res <- fit %>%
     spread_draws(ar, b, sdo, sdp, smsy, hmsy) %>%
     summarise_draws()
 
-  res <- res %>% add_column(sim = sim, U = U, n_year = n_year)
+  res <- res %>% add_column(sim = sim, U = U, n_year = n_year, divergent = divergent)
   # ---------------------------------------
   # take last n years to illustrate ts bias
   # ---------------------------------------
@@ -234,13 +237,14 @@ get_fit <- function(sim = NA, U = NA) {
       init = inits,
       pars = c("ar", "b", "sdo", "sdp", "smsy", "hmsy"),
       iter = 5000, warmup = 2500, chains = 1,
-      control = list(adapt_delta = 0.99, max_treedepth = 13)
+      control = list(adapt_delta = 0.999, max_treedepth = 13)
     )
-
+  sampler_params <- get_sampler_params(fit, inc_warmup = FALSE)
+  divergent <- sapply(sampler_params, function(x) max(x[, "divergent__"]))
   res2 <- fit %>%
     spread_draws(ar, b, sdo, sdp, smsy, hmsy) %>%
     summarise_draws()
-  res2 <- res2 %>% add_column(sim = sim, U = U, n_year = 50)
+  res2 <- res2 %>% add_column(sim = sim, U = U, n_year = 50, divergent = divergent)
   res <- bind_rows(res, res2)
   res
 }
@@ -254,9 +258,9 @@ get_fit <- function(sim = NA, U = NA) {
 # )
 
 # exploitation rate maximums to simulate across
-U = seq(from = 0.05, to = 0.65, length.out = 5)
-sim = seq_len(10) 
-to_sim <- expand.grid(sim = sim, U=U)
+U <- seq(from = 0.05, to = 0.63, length.out = 2)
+sim <- seq_len(3)
+to_sim <- expand.grid(sim = sim, U = U)
 
 future::plan(multisession)
 
@@ -266,6 +270,7 @@ system.time({
     .progress = TRUE
   )
 })
+
 out <- out %>% pivot_longer(variable)
 
 #-------------------------------------------------------------------------------
@@ -284,6 +289,7 @@ ap <- out %>%
   ylab("Posterior median estimates") +
   xlab("Years of data") +
   theme_qfc() +
+  facet_wrap(~U) +
   stat_summary(fun = median, geom = "point", size = 3, col = "darkorange3")
 ap
 
@@ -354,7 +360,7 @@ h_msy <- out %>%
   stat_summary(fun = median, geom = "point", size = 3, col = "darkorange3")
 h_msy
 
-p <- plot_grid(ap, bp, s_msy, sigo, sigp, h_msy,  ncol = 3)
+p <- plot_grid(ap, bp, s_msy, sigo, sigp, h_msy, ncol = 3)
 p
 
 ggsave("plots/ts-bias-demonstration.pdf", width = 11, height = 8)
