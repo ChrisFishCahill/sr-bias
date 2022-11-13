@@ -25,12 +25,8 @@ transformed parameters {
  real b = ar/ exp(ln_So[1]); 
  real sdo = exp(ln_sdo); 
  real sdp = exp(ln_sdp); 
- 
- real smsy; 
- real hmsy; 
- 
- hmsy = 0.5*ar - 0.07*pow(ar, 2); 
- smsy = hmsy / b; 
+ real hmsy = 0.5*ar - 0.07*pow(ar, 2); 
+ real smsy = hmsy / b; 
  
  // initialize 
  for(t in 1:n_year){S[t] = exp(ln_So[k]);}

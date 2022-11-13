@@ -1,12 +1,11 @@
 #-------------------------------------------------------------------------------
 # simulate su and peterson
-# cahill, punt, november 2022
+# cahill, walters, punt, november 2022
 
 # objectives:
 # 1) simulate the su and peterson state space ricker model
-# 2) estimate it in Stan--complete a self test to show the model works
-# 3) Reduce data quality from the simulated trajectory of catches
-#    to show time-series bias of Walters 1985
+# 2) estimate it in Stan--complete a self test to show model works
+# 3) repeat over various depletion levels from pristine for this simple model
 # 4) visualize
 
 #-------------------------------------------------------------------------------
@@ -73,25 +72,87 @@ hmsy <- 0.5 * ar - 0.07 * (ar^2) # su and peterson relationships
 smsy <- hmsy / b # su and peterson relationships
 a <- exp(ar)
 sdp <- 0.05 # process error sd
-sdo <- 0.3 # observation error sd
+sdo <- 0.15 # observation error sd
 E <- S <- rep(NA, n_year) # Escapement, Stock
 C <- R <- rep(NA, n_year) # Catch, Recruits
 
 # set up exploitation rate sequence
-Ut <- rep(NA, n_year)
-U <- 0.63
-relU <- seq(from = 0, to = 1, by = 0.05)
-Ut[1:length(relU)] <- relU
-Ut[which(is.na(Ut))] <- 1
-Ut <- Ut * U
+# Ut <- rep(NA, n_year)
+# U <- 0.63
+# relU <- seq(from = 0, to = 1, by = 0.05)
+# Ut[1:length(relU)] <- relU
+# Ut[which(is.na(Ut))] <- 1
+# Ut <- Ut * U
 
 #-------------------------------------------------------------------------------
-# call the f(x) and estimate it once in stan
+# now simulate/estimate many times
 #-------------------------------------------------------------------------------
 
-# set.seed(3)
-# dat <- sr_model()
+get_fit <- function(sim = NA, Umax = NA) {
+  # set up exploitation rate sequence
+  Ut <- rep(NA, n_year)
+  relU <- seq(from = 0, to = 1, by = 0.05)
+  Ut[1:length(relU)] <- relU
+  Ut[which(is.na(Ut))] <- 1
+  Ut <- Ut * Umax
 
+  sim_dat <- sr_model(Ut = Ut) # draw a single time series from 1:n_year
+
+  # ---------------------------------------
+  # take last n years to illustrate ts bias
+  # ---------------------------------------
+  n <- n_year - 50
+  E <- sim_dat$E[(n_year - (n - 1)):n_year]
+  C <- sim_dat$C[(n_year - (n - 3)):n_year]
+  S <- sim_dat$S[(n_year - (n - 1)):n_year]
+
+  inits <- function() {
+    list(
+      "ar" = ar,
+      "ln_So" = rep(log(sim_dat$S[1], k)),
+      "sdo" = sdo,
+      "sdp" = sdp,
+      "R" = sim_dat$R[(k + 1):n_year]
+    )
+  }
+
+  stan_data <-
+    list(
+      "k" = k,
+      "n_year" = length(E),
+      "E" = E,
+      "C" = C,
+      ar_prior = c(ar, 0.25),
+      ln_sdp_prior = c(log(sdp), 0.15),
+      ln_sdo_prior = c(log(sdo), 0.15)
+    )
+
+  fit <-
+    rstan::sampling(
+      m,
+      data = stan_data,
+      init = inits,
+      pars = c("ar", "b", "sdo", "sdp", "smsy", "hmsy"),
+      iter = 5000, warmup = 2500, chains = 1,
+      control = list(adapt_delta = 0.999, max_treedepth = 15),
+      verbose = FALSE
+    )
+  sampler_params <- get_sampler_params(fit, inc_warmup = FALSE)
+  divergent <- sapply(sampler_params, function(x) max(x[, "divergent__"]))
+  res <- fit %>%
+    spread_draws(ar, b, sdo, sdp, smsy, hmsy) %>%
+    summarise_draws()
+  res <- res %>% add_column(
+    sim = sim, Umax = Umax, n_year = n,
+    Dbar = mean(S)/sim_dat$S[1], # depletion from pristine
+    divergent = divergent
+  )
+  # res <- bind_rows(res, res2)
+  res
+}
+#-------------------------------------------------------------------------------
+# call stan, fit the models with purrr and furrr
+#-------------------------------------------------------------------------------
 options(mc.cores = parallel::detectCores())
 rstan::rstan_options(auto_write = TRUE)
 
@@ -99,9 +160,64 @@ rstan::rstan_options(auto_write = TRUE)
 path <- "src/ss_ricker.stan"
 m <- rstan::stan_model(path, verbose = T)
 
-set.seed(3)
-dat <- sr_model(Ut = Ut)
+#  testing/debugging
+# set.seed(1)
+# out = get_fit(sim = 1)
+# out = pivot_longer(out, variable)
+# system.time(
+# out <- purrr::pmap_dfr(to_sim, get_fit)
+# )
 
+# exploitation rate maximums to simulate across
+Umax <- seq(from = 0.01, to = .59, length.out = 6)
+sim <- seq_len(100)
+to_sim <- expand.grid(sim = sim, Umax = Umax)
+
+future::plan(multisession)
+
+system.time({
+  out <- future_pmap_dfr(to_sim, get_fit,
+    .options = furrr_options(seed = TRUE),
+    .progress = TRUE
+  )
+})
+
+summary(warnings())
+out <- out %>% pivot_longer(variable)
+out <- out %>% filter(divergent == 0)
+#-------------------------------------------------------------------------------
+# testing--call and estimate it once in stan
+#-------------------------------------------------------------------------------
+
+# set.seed(3)
+# dat <- sr_model()
+#
+# options(mc.cores = parallel::detectCores())
+# rstan::rstan_options(auto_write = TRUE)
+#
+# # compile the stan model
+# path <- "src/ss_ricker.stan"
+# m <- rstan::stan_model(path, verbose = T)
+#
+# depleted low state scenario:
+Ut <- rep(NA, n_year)
+Umax <- .59
+relU <- seq(from = 0, to = 1, by = 0.05)
+Ut[1:length(relU)] <- relU
+Ut[which(is.na(Ut))] <- 1
+Ut <- Ut * Umax
+plot(Ut)
+
+# recovering from depleted state 
+Umax = 0.05
+Ut <- rep(NA, n_year)
+Ut[1:(n_year/2 - 5)] <- 0.55 # fish heavily
+Ut[which(is.na(Ut))] <- Umax # fish at Umax
+plot(Ut, type = "b")
+
+# set.seed(3)
+dat <- sr_model(Ut = Ut)
+plot(dat$S, type = "b")
 # take last n years to illustrate the time series bias
 n <- 50
 E <- dat$E[(n_year - (n - 1)):n_year]
@@ -123,7 +239,7 @@ stan_data <-
     "n_year" = length(E),
     "E" = E,
     "C" = C,
-    ar_prior = c(ar, 0.5),
+    ar_prior = c(ar, 0.25),
     ln_sdp_prior = c(log(sdp), 0.15),
     ln_sdo_prior = c(log(sdo), 0.15)
   )
@@ -137,6 +253,7 @@ fit <-
     iter = 5000, warmup = 2500, chains = 1,
     control = list(adapt_delta = 0.999, max_treedepth = 13)
   )
+
 pairs(fit, pars = c("ar", "b", "sdo", "sdp"))
 fit
 
@@ -145,225 +262,112 @@ fit
 # shinystan::launch_shinystan(fit)
 
 #-------------------------------------------------------------------------------
-# now simulate/estimate many times
-#-------------------------------------------------------------------------------
-
-get_fit <- function(sim = NA, U = NA) {
-  # set up exploitation rate sequence
-  Ut <- rep(NA, n_year)
-  relU <- seq(from = 0, to = 1, by = 0.05)
-  Ut[1:length(relU)] <- relU
-  Ut[which(is.na(Ut))] <- 1
-  Ut <- Ut * U
-
-  sim_dat <- sr_model(Ut = Ut) # draw a single time series from 1:n_year
-
-  # ---------------------------------------
-  # fit to all years from simulation
-  # ---------------------------------------
-  n <- n_year
-  E <- sim_dat$E[(n_year - (n - 1)):n_year]
-  C <- sim_dat$C[(n_year - (n - 3)):n_year]
-
-  inits <- function() {
-    list(
-      "ar" = ar,
-      "ln_So" = rep(log(sim_dat$S[1], k)),
-      "sdo" = sdo,
-      "sdp" = sdp,
-      "R" = sim_dat$R[(k + 1):n_year]
-    )
-  }
-
-  stan_data <-
-    list(
-      "k" = k,
-      "n_year" = length(E),
-      "E" = E,
-      "C" = C,
-      ar_prior = c(ar, 0.2),
-      ln_sdp_prior = c(log(sdp), 0.15),
-      ln_sdo_prior = c(log(sdo), 0.15)
-    )
-
-  fit <-
-    rstan::sampling(
-      m,
-      data = stan_data,
-      init = inits,
-      pars = c("ar", "b", "sdo", "sdp", "smsy", "hmsy"),
-      iter = 5000, warmup = 2500, chains = 1,
-      control = list(adapt_delta = 0.999, max_treedepth = 13)
-    )
-  sampler_params <- get_sampler_params(fit, inc_warmup = FALSE)
-  divergent <- sapply(sampler_params, function(x) max(x[, "divergent__"]))
-  res <- fit %>%
-    spread_draws(ar, b, sdo, sdp, smsy, hmsy) %>%
-    summarise_draws()
-
-  res <- res %>% add_column(sim = sim, U = U, n_year = n_year, divergent = divergent)
-  # ---------------------------------------
-  # take last n years to illustrate ts bias
-  # ---------------------------------------
-  n <- n_year - 50
-  E <- sim_dat$E[(n_year - (n - 1)):n_year]
-  C <- sim_dat$C[(n_year - (n - 3)):n_year]
-
-  inits <- function() {
-    list(
-      "ar" = ar,
-      "ln_So" = rep(log(sim_dat$S[1], k)),
-      "sdo" = sdo,
-      "sdp" = sdp,
-      "R" = sim_dat$R[(k + 1):n_year]
-    )
-  }
-
-  stan_data <-
-    list(
-      "k" = k,
-      "n_year" = length(E),
-      "E" = E,
-      "C" = C,
-      ar_prior = c(ar, 0.2),
-      ln_sdp_prior = c(log(sdp), 0.15),
-      ln_sdo_prior = c(log(sdo), 0.15)
-    )
-
-  fit <-
-    rstan::sampling(
-      m,
-      data = stan_data,
-      init = inits,
-      pars = c("ar", "b", "sdo", "sdp", "smsy", "hmsy"),
-      iter = 5000, warmup = 2500, chains = 1,
-      control = list(adapt_delta = 0.999, max_treedepth = 13)
-    )
-  sampler_params <- get_sampler_params(fit, inc_warmup = FALSE)
-  divergent <- sapply(sampler_params, function(x) max(x[, "divergent__"]))
-  res2 <- fit %>%
-    spread_draws(ar, b, sdo, sdp, smsy, hmsy) %>%
-    summarise_draws()
-  res2 <- res2 %>% add_column(sim = sim, U = U, n_year = 50, divergent = divergent)
-  res <- bind_rows(res, res2)
-  res
-}
-
-#  testing/debugging
-# set.seed(1)
-# out = get_fit(sim = 1)
-# out = pivot_longer(out, variable)
-# system.time(
-# out <- purrr::pmap_dfr(to_sim, get_fit)
-# )
-
-# exploitation rate maximums to simulate across
-U <- seq(from = 0.05, to = 0.63, length.out = 2)
-sim <- seq_len(3)
-to_sim <- expand.grid(sim = sim, U = U)
-
-future::plan(multisession)
-
-system.time({
-  out <- future_pmap_dfr(to_sim, get_fit,
-    .options = furrr_options(seed = TRUE),
-    .progress = TRUE
-  )
-})
-
-out <- out %>% pivot_longer(variable)
-
-#-------------------------------------------------------------------------------
-#-------------------------------------------------------------------------------
-#-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
 # plot the output from simulation
+scaleFUN <- function(x) sprintf("%.2f", x)
 
 ap <- out %>%
+  group_by(Umax) %>%
+  mutate(Dbar2 = 1 - round(mean(Dbar), 2)) %>%
   filter(value == "ar") %>%
-  ggplot(aes(y = median, x = as.factor(n_year))) +
+  ggplot(aes(y = median, x = as.factor(Dbar2))) +
+  geom_hline(yintercept = c(ar), lty = 3, color = "black", lwd = 1) +
   geom_violin(width = 0.75) +
-  geom_jitter(width = 0.12, alpha = 0.5) +
-  geom_hline(yintercept = c(ar), lty = 2, color = "steelblue", lwd = 2) +
+  geom_jitter(width = 0.15, alpha = 0.25) +
   ggtitle(expression(ln ~ alpha)) +
-  ylab("Posterior median estimates") +
-  xlab("Years of data") +
+  ylab("Posterior medians") +
+  xlab("Mean depletion level") +
   theme_qfc() +
-  facet_wrap(~U) +
+  scale_y_continuous(labels=scaleFUN, limits = c(0.5, 2),
+                     breaks = c(0.50, 1.00, 1.50, 2.00)) + 
   stat_summary(fun = median, geom = "point", size = 3, col = "darkorange3")
 ap
 
 bp <- out %>%
+  group_by(Umax) %>%
+  mutate(Dbar2 = 1 - round(mean(Dbar), 2)) %>%
   filter(value == "b") %>%
-  ggplot(aes(y = median, x = as.factor(n_year))) +
+  ggplot(aes(y = median, x = as.factor(Dbar2))) +
+  geom_hline(yintercept = b, lty = 3, color = "black", lwd = 1) +
   geom_violin(width = 1.5) +
-  geom_jitter(width = 0.05, alpha = 0.5) +
-  geom_hline(yintercept = b, lty = 2, color = "steelblue", lwd = 2) +
+  geom_jitter(width = 0.15, alpha = 0.25) +
   ggtitle(expression(beta)) +
-  ylab("Posterior median estimates") +
-  xlab("Years of data") +
+  ylab("Posterior medians") +
+  xlab("Mean depletion level") +
   theme_qfc() +
+  scale_y_continuous(labels = scaleFUN, limits = c(0, 13), 
+                     breaks = c(1.00, 5.00, 13.00)) + 
   stat_summary(fun = median, geom = "point", size = 3, col = "darkorange3")
 bp
 
 sigo <- out %>%
+  group_by(Umax) %>%
+  mutate(Dbar2 = 1 - round(mean(Dbar), 2)) %>%
   filter(value == "sdo") %>%
-  ggplot(aes(y = median, x = as.factor(n_year))) +
-  geom_violin(width = 0.12) +
-  geom_jitter(width = 0.05, alpha = 0.5) +
-  geom_hline(yintercept = sdo, lty = 2, color = "steelblue", lwd = 2) +
+  ggplot(aes(y = median, x = as.factor(Dbar2))) +
+  geom_hline(yintercept = sdo, lty = 3, color = "black", lwd = 1) +
+  geom_violin(width = 0.25) +
+  geom_jitter(width = 0.15, alpha = 0.25) +
   ggtitle(expression(sigma[observation])) +
-  ylab("Posterior median estimates") +
-  xlab("Years of data") +
+  ylab("Posterior medians") +
+  xlab("Mean depletion level") +
   theme_qfc() +
+  scale_y_continuous(labels=scaleFUN) + 
   stat_summary(fun = median, geom = "point", size = 3, col = "darkorange3")
 sigo
 
 sigp <- out %>%
+  group_by(Umax) %>%
+  mutate(Dbar2 = 1 - round(mean(Dbar), 2)) %>%
   filter(value == "sdp") %>%
-  ggplot(aes(y = median, x = as.factor(n_year))) +
-  geom_violin(width = 0.12) +
-  geom_jitter(width = 0.05, alpha = 0.5) +
-  geom_hline(yintercept = sdp, lty = 2, color = "steelblue", lwd = 2) +
+  ggplot(aes(y = median, x = as.factor(Dbar2))) +
+  geom_hline(yintercept = sdp, lty = 3, color = "black", lwd = 1) +
+  geom_violin(width = 0.25) +
+  geom_jitter(width = 0.15, alpha = 0.25) +
   ggtitle(expression(sigma[process])) +
-  ylab("Posterior median estimates") +
-  xlab("Years of data") +
+  ylab("Posterior medians") +
+  xlab("Mean depletion level") +
   theme_qfc() +
+  scale_y_continuous(labels=scaleFUN) +
   stat_summary(fun = median, geom = "point", size = 3, col = "darkorange3")
 sigp
 
 s_msy <- out %>%
+  group_by(Umax) %>%
+  mutate(Dbar2 = 1 - round(mean(Dbar), 2)) %>%
   filter(value == "smsy") %>%
-  filter(median < 1e3) %>%
-  ggplot(aes(y = median, x = as.factor(n_year))) +
+  ggplot(aes(y = median, x = as.factor(Dbar2))) +
+  geom_hline(yintercept = smsy, lty = 3, color = "black", lwd = 1) +
   geom_violin(width = 0.12) +
-  geom_jitter(width = 0.05, alpha = 0.5) +
-  geom_hline(yintercept = sdp, lty = 2, color = "steelblue", lwd = 2) +
+  geom_jitter(width = 0.15, alpha = 0.25) +
   ggtitle(expression(S[MSY])) +
-  ylab("Posterior median estimates") +
-  xlab("Years of data") +
+  ylab("Posterior medians") +
+  xlab("Mean depletion level") +
   theme_qfc() +
+  scale_y_continuous(labels=scaleFUN) + 
   stat_summary(fun = median, geom = "point", size = 3, col = "darkorange3")
 s_msy
 
 h_msy <- out %>%
+  group_by(Umax) %>%
+  mutate(Dbar2 = 1 - round(mean(Dbar), 2)) %>%
   filter(value == "hmsy") %>%
-  filter(median < 1e3) %>%
-  ggplot(aes(y = median, x = as.factor(n_year))) +
+  ggplot(aes(y = median, x = as.factor(Dbar2))) +
+  geom_hline(yintercept = hmsy, lty = 3, color = "black", lwd = 1) +
   geom_violin(width = 0.12) +
-  geom_jitter(width = 0.05, alpha = 0.5) +
-  geom_hline(yintercept = hmsy, lty = 2, color = "steelblue", lwd = 2) +
+  geom_jitter(width = 0.15, alpha = 0.25) +
   ggtitle(expression(h[MSY])) +
-  ylab("Posterior median estimates") +
-  xlab("Years of data") +
+  ylab("Posterior medians") +
+  xlab("Mean depletion level") +
   theme_qfc() +
+  scale_y_continuous(labels=scaleFUN) + 
   stat_summary(fun = median, geom = "point", size = 3, col = "darkorange3")
 h_msy
 
-p <- plot_grid(ap, bp, s_msy, sigo, sigp, h_msy, ncol = 3)
+p <- plot_grid(ap, bp, sigo, sigp, s_msy, h_msy, nrow = 6, scale = 0.98)
 p
 
-ggsave("plots/ts-bias-demonstration.pdf", width = 11, height = 8)
+ggsave("plots/ts-bias-demonstration.pdf", width = 8, height = 11)
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
@@ -425,6 +429,7 @@ p <- plot_grid(p1, p2, p3, p4, p5, p6, ncol = 3)
 p
 
 ggsave("plots/ts-simulation-demonstration.pdf", width = 11, height = 8)
+
 
 
 # next chunk requires a single fit called fit:
