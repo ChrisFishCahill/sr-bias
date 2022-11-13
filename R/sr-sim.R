@@ -73,16 +73,6 @@ smsy <- hmsy / b # su and peterson relationships
 a <- exp(ar)
 sdp <- 0.05 # process error sd
 sdo <- 0.15 # observation error sd
-E <- S <- rep(NA, n_year) # Escapement, Stock
-C <- R <- rep(NA, n_year) # Catch, Recruits
-
-# set up exploitation rate sequence
-# Ut <- rep(NA, n_year)
-# U <- 0.63
-# relU <- seq(from = 0, to = 1, by = 0.05)
-# Ut[1:length(relU)] <- relU
-# Ut[which(is.na(Ut))] <- 1
-# Ut <- Ut * U
 
 #-------------------------------------------------------------------------------
 # now simulate/estimate many times
