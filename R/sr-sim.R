@@ -88,15 +88,37 @@ C <- R <- rep(NA, n_year) # Catch, Recruits
 # now simulate/estimate many times
 #-------------------------------------------------------------------------------
 
-get_fit <- function(sim = NA, Umax = NA) {
+get_fit <- function(sim = NA, Umax = NA, 
+                    scenario = c("depleted", "recovering", "declining")
+                    ) {
   # set up exploitation rate sequence
-  Ut <- rep(NA, n_year)
-  relU <- seq(from = 0, to = 1, by = 0.05)
-  Ut[1:length(relU)] <- relU
-  Ut[which(is.na(Ut))] <- 1
-  Ut <- Ut * Umax
+  if (scenario == "depleted") {
+    # fish to low state determined by Umax
+    Ut <- rep(NA, n_year)
+    relU <- seq(from = 0, to = 1, by = 0.05)
+    Ut[1:length(relU)] <- relU
+    Ut[which(is.na(Ut))] <- 1
+    Ut <- Ut * Umax
+  } else if (scenario == "recovering") {
+    # fish to low state, and then reduce exploitation 
+    Ut <- rep(NA, n_year)
+    relseq <- seq(from = 0, to = 1, by = 0.05)
+    relU <- c(relseq, rep(1, n_year/2 - length(relseq))) * 0.59 # first half
+    
+    # ramp Ut down to Umax: 
+    relU <- c(relU, ifelse(rev(relseq)*0.59 > Umax, rev(relseq)*0.59, Umax))  
+    Ut[1:length(relU)] <- relU
+    Ut[which(is.na(Ut))] <- Umax
+  } else if (scenario == "declining") {
+    # almost no exploitation until year fifty, then increasing exploitation
+    Ut <- rep(NA, n_year)
+    Ut[1:(n_year / 2)] <- 0.01 # fish heavily first half of sim
+    relU <- seq(from = 0.01, to = 1, by = 0.05)
+    relU <- c(relU, rep(1, (length(Ut) - sum(is.na(Ut)) - length(relU))))
+    Ut[which(is.na(Ut))] <- c(relU[1], relU[2:length(relU)]*Umax) # fish at Umax
+  }
 
-  sim_dat <- sr_model(Ut = Ut) # draw a single time series from 1:n_year
+  sim_dat <- sr_model(Ut = Ut) # draw a single time series|Ut
 
   # ---------------------------------------
   # take last n years to illustrate ts bias
@@ -144,10 +166,9 @@ get_fit <- function(sim = NA, Umax = NA) {
     summarise_draws()
   res <- res %>% add_column(
     sim = sim, Umax = Umax, n_year = n,
-    Dbar = mean(S)/sim_dat$S[1], # depletion from pristine
-    divergent = divergent
+    Dbar = mean(S) / sim_dat$S[1], # depletion
+    divergent = divergent, scenario = scenario
   )
-  # res <- bind_rows(res, res2)
   res
 }
 #-------------------------------------------------------------------------------
@@ -170,8 +191,9 @@ m <- rstan::stan_model(path, verbose = T)
 
 # exploitation rate maximums to simulate across
 Umax <- seq(from = 0.01, to = .59, length.out = 6)
-sim <- seq_len(100)
-to_sim <- expand.grid(sim = sim, Umax = Umax)
+scenario = c("depleted", "recovering", "declining")
+sim <- seq_len(1)
+to_sim <- expand.grid(sim = sim, Umax = Umax, scenario = scenario)
 
 future::plan(multisession)
 
@@ -185,6 +207,7 @@ system.time({
 summary(warnings())
 out <- out %>% pivot_longer(variable)
 out <- out %>% filter(divergent == 0)
+
 #-------------------------------------------------------------------------------
 # testing--call and estimate it once in stan
 #-------------------------------------------------------------------------------
@@ -199,63 +222,91 @@ out <- out %>% filter(divergent == 0)
 # path <- "src/ss_ricker.stan"
 # m <- rstan::stan_model(path, verbose = T)
 #
+
+# Different exploitation scenarios
+
 # depleted low state scenario:
-Ut <- rep(NA, n_year)
-Umax <- .59
-relU <- seq(from = 0, to = 1, by = 0.05)
-Ut[1:length(relU)] <- relU
-Ut[which(is.na(Ut))] <- 1
-Ut <- Ut * Umax
-plot(Ut)
-
-# recovering from depleted state 
-Umax = 0.05
-Ut <- rep(NA, n_year)
-Ut[1:(n_year/2 - 5)] <- 0.55 # fish heavily
-Ut[which(is.na(Ut))] <- Umax # fish at Umax
-plot(Ut, type = "b")
-
-# set.seed(3)
-dat <- sr_model(Ut = Ut)
-plot(dat$S, type = "b")
-# take last n years to illustrate the time series bias
-n <- 50
-E <- dat$E[(n_year - (n - 1)):n_year]
-C <- dat$C[(n_year - (n - 3)):n_year]
-
-inits <- function() {
-  list(
-    "ar" = ar,
-    "ln_So" = rep(log(dat$S[1], k)),
-    "sdo" = sdo,
-    "sdp" = sdp,
-    "R" = dat$R[(k + 1):n_year]
-  )
-}
-
-stan_data <-
-  list(
-    "k" = k,
-    "n_year" = length(E),
-    "E" = E,
-    "C" = C,
-    ar_prior = c(ar, 0.25),
-    ln_sdp_prior = c(log(sdp), 0.15),
-    ln_sdo_prior = c(log(sdo), 0.15)
-  )
-
-fit <-
-  rstan::sampling(
-    m,
-    data = stan_data,
-    init = inits,
-    pars = c("ar", "b", "sdo", "sdp", "smsy", "hmsy", "R", "S"),
-    iter = 5000, warmup = 2500, chains = 1,
-    control = list(adapt_delta = 0.999, max_treedepth = 13)
-  )
-
-pairs(fit, pars = c("ar", "b", "sdo", "sdp"))
-fit
+# Ut <- rep(NA, n_year)
+# Umax <- .59
+# relU <- seq(from = 0, to = 1, by = 0.05)
+# Ut[1:length(relU)] <- relU
+# Ut[which(is.na(Ut))] <- 1
+# Ut <- Ut * Umax
+# 
+# dat <- sr_model(Ut = Ut)
+# plot(dat$S, type = "b", ylab="Stock", xlab = "Year")
+# plot(Ut)
+# 
+# # recovering from depleted state
+# Ut <- rep(NA, n_year)
+# Umax <- .59
+# relseq <- seq(from = 0, to = 1, by = 0.05)
+# relU <- c(relseq, rep(1, n_year/2 - length(relseq))) * 0.59 # first half
+# 
+# # ramp down to Umax: 
+# relU <- c(relU, ifelse(rev(relseq)*0.59 > Umax, rev(relseq)*0.59, Umax))  
+# Ut[1:length(relU)] <- relU
+# Ut[which(is.na(Ut))] <- Umax
+# 
+# dat <- sr_model(Ut = Ut)
+# par(mfrow=c(2,1))
+# plot(Ut, type= "b", ylab="Ut", xlab="Year")
+# plot(dat$S, type = "b", ylab="Stock", xlab = "Year")
+# 
+# # declining from pristine state
+# Umax <- 0.59
+# Ut <- rep(NA, n_year)
+# Ut[1:(n_year / 2)] <- 0.01 # fish heavily first half of sim
+# relU <- seq(from = 0.01, to = 1, by = 0.05)
+# relU <- c(relU, rep(1, (length(Ut) - sum(is.na(Ut)) - length(relU))))
+# Ut[which(is.na(Ut))] <- c(relU[1], relU[2:length(relU)]*Umax) # fish at Umax
+# 
+# plot(Ut, type = "b")
+# dat <- sr_model(Ut = Ut)
+# plot(dat$S, type = "b", ylab="Stock", xlab = "Year")
+# 
+# # set.seed(3)
+# dat <- sr_model(Ut = Ut)
+# plot(dat$S, type = "b")
+# 
+# # take last n years to illustrate the time series bias
+# n <- 50
+# E <- dat$E[(n_year - (n - 1)):n_year]
+# C <- dat$C[(n_year - (n - 3)):n_year]
+# 
+# inits <- function() {
+#   list(
+#     "ar" = ar,
+#     "ln_So" = rep(log(dat$S[1], k)),
+#     "sdo" = sdo,
+#     "sdp" = sdp,
+#     "R" = dat$R[(k + 1):n_year]
+#   )
+# }
+# 
+# stan_data <-
+#   list(
+#     "k" = k,
+#     "n_year" = length(E),
+#     "E" = E,
+#     "C" = C,
+#     ar_prior = c(ar, 0.25),
+#     ln_sdp_prior = c(log(sdp), 0.15),
+#     ln_sdo_prior = c(log(sdo), 0.15)
+#   )
+# 
+# fit <-
+#   rstan::sampling(
+#     m,
+#     data = stan_data,
+#     init = inits,
+#     pars = c("ar", "b", "sdo", "sdp", "smsy", "hmsy", "R", "S"),
+#     iter = 5000, warmup = 2500, chains = 1,
+#     control = list(adapt_delta = 0.999, max_treedepth = 13)
+#   )
+# 
+# pairs(fit, pars = c("ar", "b", "sdo", "sdp"))
+# fit
 
 # res = fit %>% spread_draws(ar, b, sdo, sdp) %>%
 #   summarise_draws()
@@ -278,8 +329,10 @@ ap <- out %>%
   ylab("Posterior medians") +
   xlab("Mean depletion level") +
   theme_qfc() +
-  scale_y_continuous(labels=scaleFUN, limits = c(0.5, 2),
-                     breaks = c(0.50, 1.00, 1.50, 2.00)) + 
+  scale_y_continuous(
+    labels = scaleFUN, limits = c(0.5, 2),
+    breaks = c(0.50, 1.00, 1.50, 2.00)
+  ) +
   stat_summary(fun = median, geom = "point", size = 3, col = "darkorange3")
 ap
 
@@ -295,8 +348,10 @@ bp <- out %>%
   ylab("Posterior medians") +
   xlab("Mean depletion level") +
   theme_qfc() +
-  scale_y_continuous(labels = scaleFUN, limits = c(0, 13), 
-                     breaks = c(1.00, 5.00, 13.00)) + 
+  scale_y_continuous(
+    labels = scaleFUN, limits = c(0, 13),
+    breaks = c(1.00, 5.00, 13.00)
+  ) +
   stat_summary(fun = median, geom = "point", size = 3, col = "darkorange3")
 bp
 
@@ -312,7 +367,7 @@ sigo <- out %>%
   ylab("Posterior medians") +
   xlab("Mean depletion level") +
   theme_qfc() +
-  scale_y_continuous(labels=scaleFUN) + 
+  scale_y_continuous(labels = scaleFUN) +
   stat_summary(fun = median, geom = "point", size = 3, col = "darkorange3")
 sigo
 
@@ -328,7 +383,7 @@ sigp <- out %>%
   ylab("Posterior medians") +
   xlab("Mean depletion level") +
   theme_qfc() +
-  scale_y_continuous(labels=scaleFUN) +
+  scale_y_continuous(labels = scaleFUN) +
   stat_summary(fun = median, geom = "point", size = 3, col = "darkorange3")
 sigp
 
@@ -344,7 +399,7 @@ s_msy <- out %>%
   ylab("Posterior medians") +
   xlab("Mean depletion level") +
   theme_qfc() +
-  scale_y_continuous(labels=scaleFUN) + 
+  scale_y_continuous(labels = scaleFUN) +
   stat_summary(fun = median, geom = "point", size = 3, col = "darkorange3")
 s_msy
 
@@ -360,7 +415,7 @@ h_msy <- out %>%
   ylab("Posterior medians") +
   xlab("Mean depletion level") +
   theme_qfc() +
-  scale_y_continuous(labels=scaleFUN) + 
+  scale_y_continuous(labels = scaleFUN) +
   stat_summary(fun = median, geom = "point", size = 3, col = "darkorange3")
 h_msy
 
