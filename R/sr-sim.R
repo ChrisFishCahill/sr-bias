@@ -5,19 +5,16 @@
 # objectives:
 # 1) simulate the su and peterson state space ricker model
 # 2) estimate it in Stan--complete a self test to show model works
-# 3) repeat over various depletion levels from pristine for this simple model
-# 4) visualize
+# 3) repeat for different depletion levels and exploitation trajectories
 
 #-------------------------------------------------------------------------------
 # packages
 #-------------------------------------------------------------------------------
-
+library(rstan)
 library(tidybayes)
 library(tidyverse)
 library(cowplot)
-library(rstan)
-library(tidybayes)
-library(cowplot)
+
 # devtools::install_github("ChrisFishCahill/gg-qfc")
 library(ggqfc)
 library(future)
@@ -62,21 +59,6 @@ sr_model <- function(Ut = NA) {
 }
 
 #-------------------------------------------------------------------------------
-# set up some leading parameters / values for the f(x)
-#-------------------------------------------------------------------------------
-
-k <- 2 # age at maturity
-n_year <- 100
-ar <- b <- 1 # ln( ricker alpha), ricker b
-hmsy <- 0.5 * ar - 0.07 * (ar^2) # su and peterson relationships
-smsy <- hmsy / b # su and peterson relationships
-a <- exp(ar)
-sdp <- 0.05 # process error sd
-sdo <- 0.15 # observation error sd
-E <- S <- rep(NA, n_year) # Escapement, Stock
-C <- R <- rep(NA, n_year) # Catch, Recruits
-
-#-------------------------------------------------------------------------------
 # now simulate/estimate many times
 #-------------------------------------------------------------------------------
 
@@ -95,8 +77,7 @@ get_fit <- function(sim = NA, Umax = NA,
     # fish to low state, and then reduce exploitation 
     Ut <- rep(NA, n_year)
     relseq <- seq(from = 0, to = 1, by = 0.05)
-    relU <- c(relseq, rep(1, n_year/2 - length(relseq))) * 0.585 # first half
-    
+    relU <- c(relseq, rep(1, n_year/2 - length(relseq))) * 0.585 
     # ramp Ut down to Umax: 
     relU <- c(relU, ifelse(rev(relseq)*0.585 > Umax, rev(relseq)*0.585, Umax))  
     Ut[1:length(relU)] <- relU
@@ -104,7 +85,7 @@ get_fit <- function(sim = NA, Umax = NA,
   } else if (scenario == "declining") {
     # almost no exploitation until year fifty, then increasing exploitation
     Ut <- rep(NA, n_year)
-    Ut[1:(n_year / 2)] <- 0.01 # fish heavily first half of sim
+    Ut[1:(n_year / 2)] <- 0.01 
     relU <- seq(from = 0.01, to = 1, by = 0.05)
     relU <- c(relU, rep(1, (length(Ut) - sum(is.na(Ut)) - length(relU))))
     Ut[which(is.na(Ut))] <- c(relU[1], relU[2:length(relU)]*Umax) # fish at Umax
@@ -158,11 +139,27 @@ get_fit <- function(sim = NA, Umax = NA,
     summarise_draws()
   res <- res %>% add_column(
     sim = sim, Umax = Umax, n_year = n,
-    Dbar = mean(S) / sim_dat$S[1], # depletion
+    Dbar = mean(S) / sim_dat$S[1], 
     divergent = divergent, scenario = scenario
   )
   res
 }
+
+#-------------------------------------------------------------------------------
+# set up some leading parameters / values for the f(x)
+#-------------------------------------------------------------------------------
+
+k <- 2 # age at maturity
+n_year <- 100
+ar <- b <- 1 # ln( ricker alpha), ricker b
+hmsy <- 0.5 * ar - 0.07 * (ar^2) # su and peterson relationships
+smsy <- hmsy / b # su and peterson relationships
+a <- exp(ar)
+sdp <- 0.05 # process error sd
+sdo <- 0.15 # observation error sd
+E <- S <- rep(NA, n_year) # Escapement, Stock
+C <- R <- rep(NA, n_year) # Catch, Recruits
+
 #-------------------------------------------------------------------------------
 # call stan, fit the models with furrr
 #-------------------------------------------------------------------------------
@@ -173,7 +170,7 @@ rstan::rstan_options(auto_write = TRUE)
 path <- "src/ss_ricker.stan"
 m <- rstan::stan_model(path, verbose = T)
 
-#  testing/debugging
+#  debugging
 # set.seed(1)
 # out = get_fit(sim = 1)
 # out = pivot_longer(out, variable)
@@ -185,7 +182,7 @@ m <- rstan::stan_model(path, verbose = T)
 Umax <- seq(from = 0.01, to = .5999, length.out = 6)
 
 scenario = c("depleted", "recovering", "declining")
-sim <- seq_len(10)
+sim <- seq_len(30)
 to_sim <- expand.grid(sim = sim, Umax = Umax, scenario = scenario)
 
 future::plan(multisession)
@@ -204,7 +201,7 @@ sim_res <- out %>% pivot_longer(variable)
 sim_res <- sim_res %>% filter(divergent == 0)
 
 #-------------------------------------------------------------------------------
-# testing--call and estimate it once in stan
+# testing--call simulation and estimate model one time
 #-------------------------------------------------------------------------------
 
 # set.seed(3)
