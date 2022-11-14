@@ -2,8 +2,8 @@ sim_res <- readRDS("sims/su-peterson-sims.rds")
 sim_res <- sim_res %>% pivot_longer(variable)
 sim_res <- sim_res %>% filter(divergent == 0)
 
-plot_dat = sim_res %>% filter(scenario == "declining") # depleted, recovering, declining
-  
+plot_dat <- sim_res %>% filter(scenario == "declining") # depleted, recovering, declining
+
 # plot the output from simulation
 scaleFUN <- function(x) sprintf("%.2f", x)
 
@@ -39,7 +39,7 @@ bp <- plot_dat %>%
   xlab("Mean depletion level") +
   theme_qfc() +
   scale_y_continuous(
-    labels = scaleFUN, limits = c(0,9),
+    labels = scaleFUN, limits = c(0, 9),
     breaks = c(1.00, 5.00, 9.00)
   ) +
   stat_summary(fun = median, geom = "point", size = 3, col = "darkorange3")
@@ -114,6 +114,156 @@ p <- plot_grid(ap, bp, sigo, sigp, s_msy, h_msy, nrow = 6, scale = 0.98)
 p
 
 ggsave("plots/ts-bias-declining.pdf", width = 8, height = 11)
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+# visualize the U scenarios
+scenario <- c("depleted", "recovering", "declining")
+
+res <- tibble(
+  "S" = NULL, "Umax" = NULL, "scenario" = NULL,
+  "year" = NULL, "Ut" = NULL
+)
+
+for (i in unique(scenario)) {
+  for (j in unique(Umax)) {
+    # set up exploitation rate sequence
+    if (i == "depleted") {
+      # fish to low state determined by Umax
+      Ut <- rep(NA, n_year)
+      relU <- seq(from = 0, to = 1, by = 0.05)
+      Ut[1:length(relU)] <- relU
+      Ut[which(is.na(Ut))] <- 1
+      Ut <- Ut * j
+    } else if (i == "recovering") {
+      # fish to low state, and then reduce exploitation
+      Ut <- rep(NA, n_year)
+      relseq <- seq(from = 0, to = 1, by = 0.05)
+      relU <- c(relseq, rep(1, n_year / 2 - length(relseq))) * 0.585
+      # ramp Ut down to Umax:
+      relU <- c(relU, ifelse(rev(relseq) * 0.585 > j, rev(relseq) * 0.585, j))
+      Ut[1:length(relU)] <- relU
+      Ut[which(is.na(Ut))] <- j
+    } else if (i == "declining") {
+      # almost no exploitation until year fifty, then increasing exploitation
+      Ut <- rep(NA, n_year)
+      Ut[1:(n_year / 2)] <- 0.01
+      relU <- seq(from = 0.01, to = 1, by = 0.05)
+      relU <- c(relU, rep(1, (length(Ut) - sum(is.na(Ut)) - length(relU))))
+      Ut[which(is.na(Ut))] <- c(relU[1], relU[2:length(relU)] * j)
+    }
+    set.seed(1)
+    sim_dat <- sr_model(Ut = Ut)
+    res <- res %>% bind_rows(tibble(
+      "S" = sim_dat$S, "Umax" = j, "scenario" = i,
+      "year" = sim_dat$year, "Ut" = Ut
+    ))
+  }
+}
+
+Strajectory <- res %>%
+  mutate(Umax = round(Umax, 2)) %>%
+  filter(scenario == "depleted") %>%
+  ggplot(aes(x = year, y = S, group = Umax, color = as.factor(Umax))) +
+  scale_color_manual(values = c('#c7e9b4','#7fcdbb','#41b6c4','#1d91c0','#225ea8','#0c2c84')) + 
+  geom_line(size = 1) +
+  ylab("Stock") +
+  xlab("Year of simulation") +
+  ggtitle("Examples of depleted stock trajectories") +
+  scale_y_continuous(limits = c(0, 1.15), breaks = c(0, 0.25, 0.5, 0.75, 1.0)) +
+  geom_hline(yintercept = c(0.1, 1.0), linetype = 2) +
+  theme_qfc() + theme(legend.position = "none") +
+  annotate("rect", xmin = 1, xmax = 50, ymin = -Inf, ymax = Inf,
+           alpha = .1,fill = "blue")
+
+Uhistory <- res %>%
+  mutate(
+    Ut = round(Ut, 2),
+    Umax = round(Umax, 2)
+  ) %>%
+  filter(scenario == "depleted") %>%
+  ggplot(aes(x = year, y = Ut, group = Umax, color = as.factor(Umax))) +
+  scale_color_manual(values = c('#c7e9b4','#7fcdbb','#41b6c4','#1d91c0','#225ea8','#0c2c84')) + 
+  geom_line(size = 1) +
+  xlab("Year of simulation") + ylab(expression(U[t])) + 
+  ggtitle("Depleted stock exploitation rate histories") +
+  theme_qfc() + guides(color=guide_legend(title=expression(U[max])))  +
+  annotate("rect", xmin = 1, xmax = 50, ymin = -Inf, ymax = Inf,
+           alpha = .1,fill = "blue")
+
+p <- plot_grid(Strajectory, Uhistory, nrow = 1, scale = 0.98)
+p
+
+Strajectory1 <- res %>%
+  mutate(Umax = round(Umax, 2)) %>%
+  filter(scenario == "recovering") %>%
+  ggplot(aes(x = year, y = S, group = Umax, color = as.factor(Umax))) +
+  scale_color_manual(values = c('#c7e9b4','#7fcdbb','#41b6c4','#1d91c0','#225ea8','#0c2c84')) + 
+  geom_line(size = 1) +
+  ylab("Stock") +
+  xlab("Year of simulation") +
+  ggtitle("Examples of recovering stock trajectories") +
+  scale_y_continuous(limits = c(0, 1.15), breaks = c(0, 0.25, 0.5, 0.75, 1.0)) +
+  geom_hline(yintercept = c(0.1, 1.0), linetype = 2) +
+  theme_qfc() + theme(legend.position = "none") +
+  annotate("rect", xmin = 1, xmax = 50, ymin = -Inf, ymax = Inf,
+           alpha = .1,fill = "blue")
+
+Uhistory1 <- res %>%
+  mutate(
+    Ut = round(Ut, 2),
+    Umax = round(Umax, 2)
+  ) %>%
+  filter(scenario == "recovering") %>%
+  ggplot(aes(x = year, y = Ut, group = Umax, color = as.factor(Umax))) +
+  scale_color_manual(values = c('#c7e9b4','#7fcdbb','#41b6c4','#1d91c0','#225ea8','#0c2c84')) + 
+  geom_line(size = 1) +
+  xlab("Year of simulation") + ylab(expression(U[t])) + 
+  ggtitle("Recovering stock exploitation rate histories") +
+  theme_qfc() + guides(color=guide_legend(title=expression(U[max])))  +
+  annotate("rect", xmin = 1, xmax = 50, ymin = -Inf, ymax = Inf,
+           alpha = .1,fill = "blue")
+
+p1 <- plot_grid(Strajectory1, Uhistory1, nrow = 1, scale = 0.98)
+p1
+
+Strajectory2 <- res %>%
+  mutate(Umax = round(Umax, 2)) %>%
+  filter(scenario == "declining") %>%
+  ggplot(aes(x = year, y = S, group = Umax, color = as.factor(Umax))) +
+  scale_color_manual(values = c('#c7e9b4','#7fcdbb','#41b6c4','#1d91c0','#225ea8','#0c2c84')) + 
+  geom_line(size = 1) +
+  ylab("Stock") +
+  xlab("Year of simulation") +
+  ggtitle("Examples of declining stock trajectories") +
+  scale_y_continuous(limits = c(0, 1.15), breaks = c(0, 0.25, 0.5, 0.75, 1.0)) +
+  geom_hline(yintercept = c(0.1, 1.0), linetype = 2) +
+  theme_qfc() + theme(legend.position = "none") +
+  annotate("rect", xmin = 1, xmax = 50, ymin = -Inf, ymax = Inf,
+           alpha = .1,fill = "blue")
+
+Uhistory2 <- res %>%
+  mutate(
+    Ut = round(Ut, 2),
+    Umax = round(Umax, 2)
+  ) %>%
+  filter(scenario == "declining") %>%
+  ggplot(aes(x = year, y = Ut, group = Umax, color = as.factor(Umax))) +
+  scale_color_manual(values = c('#c7e9b4','#7fcdbb','#41b6c4','#1d91c0','#225ea8','#0c2c84')) + 
+  geom_line(size = 1) +
+  xlab("Year of simulation") + ylab(expression(U[t])) + 
+  ggtitle("Declining stock exploitation rate histories") +
+  theme_qfc() + guides(color=guide_legend(title=expression(U[max])))  +
+  annotate("rect", xmin = 1, xmax = 50, ymin = -Inf, ymax = Inf,
+           alpha = .1,fill = "blue")
+
+p2 <- plot_grid(Strajectory2, Uhistory2, nrow = 1, scale = 0.98)
+p2
+
+pbig <- plot_grid(p, p1, p2, ncol = 1)
+pbig
+
+ggsave("plots/ts-bias-scenarios.pdf", width = 11, height = 8)
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------

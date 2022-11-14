@@ -88,7 +88,7 @@ get_fit <- function(sim = NA, Umax = NA,
     Ut[1:(n_year / 2)] <- 0.01 
     relU <- seq(from = 0.01, to = 1, by = 0.05)
     relU <- c(relU, rep(1, (length(Ut) - sum(is.na(Ut)) - length(relU))))
-    Ut[which(is.na(Ut))] <- c(relU[1], relU[2:length(relU)]*Umax) # fish at Umax
+    Ut[which(is.na(Ut))] <- c(relU[1], relU[2:length(relU)]*Umax) 
   }
 
   sim_dat <- sr_model(Ut = Ut) # draw a single time series|Ut
