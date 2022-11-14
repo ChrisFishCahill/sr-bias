@@ -182,7 +182,7 @@ m <- rstan::stan_model(path, verbose = T)
 Umax <- seq(from = 0.01, to = .5999, length.out = 6)
 
 scenario = c("depleted", "recovering", "declining")
-sim <- seq_len(30)
+sim <- seq_len(100)
 to_sim <- expand.grid(sim = sim, Umax = Umax, scenario = scenario)
 
 future::plan(multisession)
@@ -195,10 +195,7 @@ system.time({
 })
 
 #saveRDS(out, file = "sims/su-peterson-sims.rds")
-
 summary(warnings())
-sim_res <- out %>% pivot_longer(variable)
-sim_res <- sim_res %>% filter(divergent == 0)
 
 #-------------------------------------------------------------------------------
 # testing--call simulation and estimate model one time

@@ -1,11 +1,16 @@
+sim_res <- readRDS("sims/su-peterson-sims.rds")
+sim_res <- sim_res %>% pivot_longer(variable)
+sim_res <- sim_res %>% filter(divergent == 0)
+
+plot_dat = sim_res %>% filter(scenario == "declining") # depleted, recovering, declining
+  
 # plot the output from simulation
 scaleFUN <- function(x) sprintf("%.2f", x)
 
-ap <- sim_res %>%
+ap <- plot_dat %>%
   group_by(Umax) %>%
   mutate(Dbar2 = 1 - round(mean(Dbar), 2)) %>%
   filter(value == "ar") %>%
-  filter(scenario == "depleted") %>%
   ggplot(aes(y = median, x = as.factor(Dbar2))) +
   geom_hline(yintercept = c(ar), lty = 3, color = "black", lwd = 1) +
   geom_violin(width = 0.75) +
@@ -21,11 +26,10 @@ ap <- sim_res %>%
   stat_summary(fun = median, geom = "point", size = 3, col = "darkorange3")
 ap
 
-bp <- sim_res %>%
+bp <- plot_dat %>%
   group_by(Umax) %>%
   mutate(Dbar2 = 1 - round(mean(Dbar), 2)) %>%
   filter(value == "b") %>%
-  filter(scenario == "depleted") %>%
   ggplot(aes(y = median, x = as.factor(Dbar2))) +
   geom_hline(yintercept = b, lty = 3, color = "black", lwd = 1) +
   geom_violin(width = 1.5) +
@@ -35,17 +39,16 @@ bp <- sim_res %>%
   xlab("Mean depletion level") +
   theme_qfc() +
   scale_y_continuous(
-    labels = scaleFUN, limits = c(0, 13),
+    labels = scaleFUN, limits = c(0,9),
     breaks = c(1.00, 5.00, 9.00)
   ) +
   stat_summary(fun = median, geom = "point", size = 3, col = "darkorange3")
 bp
 
-sigo <- sim_res %>%
+sigo <- plot_dat %>%
   group_by(Umax) %>%
   mutate(Dbar2 = 1 - round(mean(Dbar), 2)) %>%
   filter(value == "sdo") %>%
-  filter(scenario == "depleted") %>%
   ggplot(aes(y = median, x = as.factor(Dbar2))) +
   geom_hline(yintercept = sdo, lty = 3, color = "black", lwd = 1) +
   geom_violin(width = 0.25) +
@@ -58,11 +61,10 @@ sigo <- sim_res %>%
   stat_summary(fun = median, geom = "point", size = 3, col = "darkorange3")
 sigo
 
-sigp <- sim_res %>%
+sigp <- plot_dat %>%
   group_by(Umax) %>%
   mutate(Dbar2 = 1 - round(mean(Dbar), 2)) %>%
   filter(value == "sdp") %>%
-  filter(scenario == "depleted") %>%
   ggplot(aes(y = median, x = as.factor(Dbar2))) +
   geom_hline(yintercept = sdp, lty = 3, color = "black", lwd = 1) +
   geom_violin(width = 0.25) +
@@ -75,11 +77,10 @@ sigp <- sim_res %>%
   stat_summary(fun = median, geom = "point", size = 3, col = "darkorange3")
 sigp
 
-s_msy <- sim_res %>%
+s_msy <- plot_dat %>%
   group_by(Umax) %>%
   mutate(Dbar2 = 1 - round(mean(Dbar), 2)) %>%
   filter(value == "smsy") %>%
-  filter(scenario == "depleted") %>%
   filter(median < 1e2) %>%
   ggplot(aes(y = median, x = as.factor(Dbar2))) +
   geom_hline(yintercept = smsy, lty = 3, color = "black", lwd = 1) +
@@ -93,11 +94,10 @@ s_msy <- sim_res %>%
   stat_summary(fun = median, geom = "point", size = 3, col = "darkorange3")
 s_msy
 
-h_msy <- sim_res %>%
+h_msy <- plot_dat %>%
   group_by(Umax) %>%
   mutate(Dbar2 = 1 - round(mean(Dbar), 2)) %>%
   filter(value == "hmsy") %>%
-  filter(scenario == "depleted") %>%
   ggplot(aes(y = median, x = as.factor(Dbar2))) +
   geom_hline(yintercept = hmsy, lty = 3, color = "black", lwd = 1) +
   geom_violin(width = 0.12) +
@@ -113,7 +113,7 @@ h_msy
 p <- plot_grid(ap, bp, sigo, sigp, s_msy, h_msy, nrow = 6, scale = 0.98)
 p
 
-ggsave("plots/ts-bias-depleted.pdf", width = 8, height = 11)
+ggsave("plots/ts-bias-declining.pdf", width = 8, height = 11)
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
