@@ -177,10 +177,9 @@ m <- rstan::stan_model(path, verbose = T)
 # )
 
 # exploitation rate maximums to simulate across
-Umax <- seq(from = 0.01, to = .5999, length.out = 2)
 Umax = 0.599
 scenario = c("depleted")
-sim <- seq_len(10)
+sim <- seq_len(30)
 
 to_sim <- expand.grid(sim = sim, Umax = Umax, scenario = scenario)
 
