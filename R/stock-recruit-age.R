@@ -32,10 +32,6 @@ fa[which(fa < 0)] <- 0
 vul <- 1 / (1 + exp(-1.7 * (ages - ahv) / sdv))
 Snat <- Sad * (1 - exp(-1.5 * (ages - 0.8)))
 
-Bpro = sum(wa*vul*Surv0)     # vul bio per recruit unfished
-Bo = Ro*Bpro*exp(0.5*sdwt^2) # vul bio unfished
-
-
 # NOTE:
 # just picked some reasonable values for the 1.7, 1.5 and 0.8
 # but could be whatever
@@ -46,6 +42,9 @@ for (a in 2:length(ages)) {
   Surv0[a] <- Surv0[a - 1] * Snat[a - 1]
   SurvF[a] <- SurvF[a - 1] * Snat[a - 1] * (1 - U * vul[a - 1])
 }
+
+Bpro = sum(wa*vul*Surv0)     # vul bio per recruit unfished
+Bo = Ro*Bpro*exp(0.5*sdwt^2) # vul bio unfished
 
 EPRo <- sum(fa * Surv0)
 EPRf <- sum(fa * SurvF)
@@ -188,8 +187,8 @@ ar_ests <- b_ests <- rep(NA, nsim)
 set.seed(1)
 for (i in 1:nsim) {
   dat <- run_model()
-  # dat <- dat[(nrow(dat) - 50):nrow(dat), ]
-  fit <- lm(dat$ln_rs ~ dat$s)
+  dat <- dat[(nrow(dat) - 50):nrow(dat), ]
+  fit <- lm(dat$ln_RS ~ dat$S)
   ar_est <- fit$coefficients[1]
   b_est <- -fit$coefficients[2] # convert to -beta
   ar_ests[i] <- ar_est
