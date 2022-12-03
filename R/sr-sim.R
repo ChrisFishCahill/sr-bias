@@ -155,10 +155,29 @@ ar <- b <- 1 # ln( ricker alpha), ricker b
 hmsy <- 0.5 * ar - 0.07 * (ar^2) # su and peterson relationships
 smsy <- hmsy / b # su and peterson relationships
 a <- exp(ar)
-sdp <- 0.05 # process error sd
-sdo <- 0.15 # observation error sd
+sdp <- 0.001 # process error sd
+sdo <- 0.15 # observation error sd-- note this affects catch, not calculation of R and S
 E <- S <- rep(NA, n_year) # Escapement, Stock
 C <- R <- rep(NA, n_year) # Catch, Recruits
+
+# fish to low state determined by Umax
+Umax <- 0.5999
+Ut <- rep(NA, n_year)
+relU <- seq(from = 0, to = 1, by = 0.05)
+Ut[1:length(relU)] <- relU
+Ut[which(is.na(Ut))] <- 1
+Ut <- Ut * Umax
+
+# visualize for jim:
+sim_dat <- sr_model(Ut = Ut) 
+
+sim_dat %>%
+  ggplot(aes(x = S, y = R))+
+  geom_point() + 
+  theme_qfc()
+
+# or not using ggplot:
+plot(sim_dat$R ~ sim_dat$S, xlab = "stock", ylab = "recruits")
 
 #-------------------------------------------------------------------------------
 # call stan, fit the models with furrr
@@ -182,14 +201,15 @@ m <- rstan::stan_model(path, verbose = T)
 Umax <- seq(from = 0.01, to = .5999, length.out = 6)
 
 scenario = c("depleted", "recovering", "declining")
-sim <- seq_len(100)
+sim <- seq_len(10)
 to_sim <- expand.grid(sim = sim, Umax = Umax, scenario = scenario)
 
 future::plan(multisession)
 
 system.time({
   out <- future_pmap_dfr(to_sim, get_fit,
-    .options = furrr_options(seed = TRUE),
+    .options = furrr_options(seed = TRUE, 
+                             scheduling = Inf),
     .progress = TRUE
   )
 })
